@@ -8,11 +8,11 @@
 	<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
 	<Title>BTree</Title>
 	<Authors>DevAM</Authors>
-	<Company />
+	<Company>DevAM</Company>
 	<Product>BTree</Product>
 	<Version>1.0.0</Version>
 	<Description>Simple and high performant BTree for C# and .NET.</Description>
-	<Copyright>DEVAM</Copyright>
+	<Copyright>DevAM</Copyright>
 	<PackageIcon>icon.jpeg</PackageIcon>
 	<PackageReadmeFile>README.md</PackageReadmeFile>
 	<RepositoryType>git</RepositoryType>
@@ -22,6 +22,10 @@
 	<PackageLicenseExpression>MIT</PackageLicenseExpression>
 	<PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
 	<AssemblyName>BTree</AssemblyName>
+	<SignAssembly>False</SignAssembly>
+	<PackageId>DevAM.BTree</PackageId>
+	<PackageProjectUrl>https://github.com/CodeDevAM/BTree</PackageProjectUrl>
+	<RepositoryUrl>https://github.com/CodeDevAM/BTree</RepositoryUrl>
   </PropertyGroup>
 
   <ItemGroup>
