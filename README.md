@@ -44,7 +44,7 @@ foreach(IntItem item in range)
 
 ```
 
-If the items shall be stored with a dedicated key or the type of the item does not implement `IComparable<T>` then you could wrap it with simple struct. The following example illustrates how to store some strings with associated integer keys.
+If the items shall be stored with a dedicated key or the type of the item does not implement `IComparable<T>` then you could wrap it within a simple struct. The following example illustrates how to store some strings with associated integer keys.
 
 ```CSharp
 // Wrap the string value as an key value pair called Item
