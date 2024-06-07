@@ -2,6 +2,8 @@
 using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using BTree;
+using System;
+using System.Linq;
 
 Summary summary = BenchmarkRunner.Run<BTreeBenchmark>();
 

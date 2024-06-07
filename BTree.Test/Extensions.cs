@@ -1,4 +1,6 @@
-﻿namespace BTree.Test;
+﻿using System;
+
+namespace BTree.Test;
 
 internal static class Extensions
 {

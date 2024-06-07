@@ -1,4 +1,6 @@
-﻿namespace BTree.Test
+﻿using System;
+
+namespace BTree.Test
 {
     internal record Ref<T>(T Value) : IComparable<Ref<T>>, IComparable<T> where T : IComparable<T>
     {

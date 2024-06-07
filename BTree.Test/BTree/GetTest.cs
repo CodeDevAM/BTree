@@ -1,4 +1,6 @@
 ﻿using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace BTree.Test.BTree;
 
@@ -54,6 +56,16 @@ public class GetTest
         tree.DoForEach<Ref<int>>(actualRangeList.Add, minItem, maxItem, true);
         CollectionAssert.AreEqual(expectedRangeSequence, actualRangeList);
 
+        actualRangeList = [];
+        tree.DoForEach<Ref<int>>(item =>
+        {
+            actualRangeList.Add(item);
+            return true;
+        }, minItem, maxItem, true);
+
+        expectedRangeSequence = orderedItems.Where(item => item >= minItem && item <= maxItem).Take(1).ToArray();
+        CollectionAssert.AreEqual(expectedRangeSequence, actualRangeList);
+
         // exclusive max
         expectedRangeSequence = orderedItems.Where(item => item >= minItem && item < maxItem).ToArray();
         actualRangeSequence = tree.GetRange<Ref<int>>(minItem, maxItem, false).ToArray();
@@ -61,6 +73,16 @@ public class GetTest
 
         actualRangeList = [];
         tree.DoForEach<Ref<int>>(actualRangeList.Add, minItem, maxItem, false);
+        CollectionAssert.AreEqual(expectedRangeSequence, actualRangeList);
+
+        actualRangeList = [];
+        tree.DoForEach<Ref<int>>(item =>
+        {
+            actualRangeList.Add(item);
+            return true;
+        }, minItem, maxItem, false);
+
+        expectedRangeSequence = orderedItems.Where(item => item >= minItem && item < maxItem).Take(1).ToArray();
         CollectionAssert.AreEqual(expectedRangeSequence, actualRangeList);
     }
 
