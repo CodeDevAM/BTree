@@ -14,7 +14,7 @@ namespace BTree.Test
             return Value.CompareTo(other.Value);
         }
 
-        public static implicit operator T(Ref<T> _ref) => _ref.Value;
+        public static implicit operator T(Ref<T> @ref) => @ref.Value;
         public static implicit operator Ref<T>(T value) => new(value);
 
         public override string ToString()

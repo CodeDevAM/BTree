@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 
+#pragma warning disable IDE1006
+// ReSharper disable InconsistentNaming
+
 namespace BTree;
 
 [DebuggerDisplay("Count: {Count}")]
@@ -12,25 +15,26 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     private class Node
     {
         /// <summary>
-        /// Maximum number of children per node. Maximum number of items per node is <see cref="Degree"/> - 1. Minimum is <see cref="MinDegree"/>
+        /// Maximum number of children per node. Maximum number of items per node is <see cref="_Degree"/> - 1. Minimum is <see cref="MinDegree"/>
         /// </summary>
-        internal ushort Degree { get; private set; }
+        private ushort _Degree { get; set; }
+
         internal T[] Items { get; private set; }
         internal Node[] Children { get; private set; }
-        internal int Count { get; set; } = 0;
+        internal int Count { get; set; }
         internal bool IsLeaf { get; set; }
 
-        internal bool IsFull => Count >= Degree;
-        internal int MinCount => (Degree - 1) / 2;
-        internal bool HasUnderflow => Count < MinCount;
-        public bool CanBorrow => Count > MinCount;
+        private bool _IsFull => Count >= _Degree;
+        private int _MinCount => (_Degree - 1) / 2;
+        private bool _HasUnderflow => Count < _MinCount;
+        private bool _CanBorrow => Count > _MinCount;
 
         internal Node(ushort degree, bool isLeaf)
         {
-            Degree = degree < MinDegree ? MinDegree : degree;
+            _Degree = degree < MinDegree ? MinDegree : degree;
             IsLeaf = isLeaf;
-            Items = new T[Degree];
-            Children = IsLeaf ? null : new Node[Degree + 1];
+            Items = new T[_Degree];
+            Children = IsLeaf ? null : new Node[_Degree + 1];
         }
 
         internal Node(ushort degree, Node leftChild, Node rightChild, T splittingItem) : this(degree, false)
@@ -195,7 +199,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
                 }
             }
 
-            if (IsFull)
+            if (_IsFull)
             {
                 splitResult = SplitNode();
             }
@@ -206,7 +210,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
         internal record struct SplitResult(Node NewRightNode, T SplittingItem);
         private SplitResult SplitNode()
         {
-            Node newRightNode = new(Degree, IsLeaf);
+            Node newRightNode = new(_Degree, IsLeaf);
 
             int leftNodeCount = (Count - 1) / 2;
             int splittingItemIndex = leftNodeCount;
@@ -289,7 +293,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
 
                         Items[index] = maxItem;
 
-                        if (removeResult && child.HasUnderflow)
+                        if (child._HasUnderflow)
                         {
                             HandlePotentialUnderflow(index);
                         }
@@ -299,13 +303,13 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
                 }
             }
 
-            // Handle children afterwards
+            // Handle children afterward
             if (!IsLeaf)
             {
                 Node child = Children[index];
                 bool removeResult = child.Remove(key, out item);
 
-                if (removeResult && child.HasUnderflow)
+                if (removeResult && child._HasUnderflow)
                 {
                     HandlePotentialUnderflow(index);
                 }
@@ -338,7 +342,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
 
                 bool removeResult = child.RemoveMin(out minItem);
 
-                if (removeResult && child.HasUnderflow)
+                if (removeResult && child._HasUnderflow)
                 {
                     HandlePotentialUnderflow(0);
                 }
@@ -368,7 +372,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
 
                 bool removeResult = child.RemoveMax(out maxItem);
 
-                if (removeResult && child.HasUnderflow)
+                if (removeResult && child._HasUnderflow)
                 {
                     HandlePotentialUnderflow(Count);
                 }
@@ -387,7 +391,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             Node leftSibling = Children[index - 1];
 
             Debug.Assert(child.IsLeaf == leftSibling.IsLeaf);
-            Debug.Assert(leftSibling.CanBorrow);
+            Debug.Assert(leftSibling._CanBorrow);
 
             if (child.IsLeaf)
             {
@@ -425,7 +429,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             Node rightSibling = Children[index + 1];
 
             Debug.Assert(child.IsLeaf == rightSibling.IsLeaf);
-            Debug.Assert(rightSibling.CanBorrow);
+            Debug.Assert(rightSibling._CanBorrow);
 
             if (child.IsLeaf)
             {
@@ -461,7 +465,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             Node rightChild = Children[index + 1];
 
             Debug.Assert(leftChild.IsLeaf == rightChild.IsLeaf);
-            Debug.Assert(!leftChild.CanBorrow && !rightChild.CanBorrow);
+            Debug.Assert(!leftChild._CanBorrow && !rightChild._CanBorrow);
 
             if (leftChild.IsLeaf)
             {
@@ -515,14 +519,14 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
         }
 
 
-        internal void HandlePotentialUnderflow(int index)
+        private void HandlePotentialUnderflow(int index)
         {
             Debug.Assert(index >= 0);
             Debug.Assert(!IsLeaf);
             Debug.Assert(index < Count + 1);
 
             Node child = Children[index];
-            if (!child.HasUnderflow)
+            if (!child._HasUnderflow)
             {
                 return;
             }
@@ -530,11 +534,11 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             Node leftSibling = index > 0 ? Children[index - 1] : null;
             Node rightSibling = index < Count ? Children[index + 1] : null;
 
-            if (leftSibling?.CanBorrow == true)
+            if (leftSibling?._CanBorrow == true)
             {
                 BorrowFromLeftSibling(index);
             }
-            else if (rightSibling?.CanBorrow == true)
+            else if (rightSibling?._CanBorrow == true)
             {
                 BorrowFromRightSibling(index);
             }
@@ -548,7 +552,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             }
             else
             {
-                throw new Exception("Unhandled undeflow");
+                throw new Exception("Unhandled underflow");
             }
         }
 
@@ -566,7 +570,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
                 }
             }
 
-            // Handle children afterwards
+            // Handle children afterward
             if (!IsLeaf)
             {
                 Node child = Children[index];
@@ -594,7 +598,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
                 }
             }
 
-            // Handle children afterwards
+            // Handle children afterward
             if (!IsLeaf)
             {
                 Node child = Children[index];
@@ -901,7 +905,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     }
 
     /// <summary>
-    /// The default Degree is choosen to be a good comprimise of performance and memory consumtion.
+    /// The default Degree is chosen to be a good compromise of performance and memory consumption.
     /// </summary>
     public const ushort DefaultDegree = 64;
 
@@ -910,11 +914,11 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     private Node _Root { get; set; } = new(degree, true);
 
     /// <summary>
-    /// Maximum number of children per node. Maximum number of items per node is <see cref="Degree"/> - 1. Minimum is <see cref="MinDegree"/>
+    /// Maximum number of children per node. Maximum number of items per node is <see cref="_Degree"/> - 1. Minimum is <see cref="MinDegree"/>
     /// </summary>
-    public ushort Degree { get; private set; } = degree < MinDegree ? MinDegree : degree;
+    private ushort _Degree { get; set; } = degree < MinDegree ? MinDegree : degree;
 
-    private long _Count { get; set; } = 0L;
+    private long _Count { get; set; }
 
     /// <summary>
     /// The number of items.
@@ -930,21 +934,20 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             }
             _Count = value;
 
-            if (CountChanged != null)
+            try
             {
-                try
-                {
-                    CountChanged.Invoke(this, value);
-                }
-                catch { }
-
+                CountChanged?.Invoke(this, value);
+            }
+            catch
+            {
+                // ignored
             }
         }
     }
 
     public event EventHandler<long> CountChanged;
 
-    private long _IterationCount = 0L;
+    private long _IterationCount;
 
     /// <summary>
     /// Inserts an item or updates it if it already exists.
@@ -972,7 +975,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
         }
         else if (insertResult.SplitResult.HasValue)
         {
-            _Root = new(Degree, _Root, insertResult.SplitResult.Value.NewRightNode, insertResult.SplitResult.Value.SplittingItem);
+            _Root = new(_Degree, _Root, insertResult.SplitResult.Value.NewRightNode, insertResult.SplitResult.Value.SplittingItem);
         }
 
         Count++;
@@ -1114,7 +1117,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     /// Gets the minimum item if it exists.
     /// </summary>
     /// <param name="minItem"></param>
-    /// <returns>true if a mininal item exists otherwise false</returns>
+    /// <returns>true if a minimum item exists otherwise false</returns>
     public bool GetMin(out T minItem)
     {
         return _Root.GetMin(out minItem);
@@ -1135,7 +1138,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     /// Performs an action for every single item within an inclusive lower limit (<paramref name="minKey"/>) and an upper limit (<paramref name="maxKey"/>). 
     /// The parameter <paramref name="maxKey"/> and <paramref name="minKey"/> can be a reduced version of an item as long as they implement <see cref="IComparable{T}"/>.
     /// The upper limit is inclusive if <paramref name="maxInclusive"/> is true otherwise the upper limit is exclusive.
-    /// Use this over <see cref="GetRange(T, T, bool)"/> in performance critical paths.
+    /// Use this over <see cref="GetRange{TKey}(TKey, TKey, bool)"/> in performance critical paths.
     /// </summary>
     /// <param name="action">Function that will be called for every relevant item.</param>
     /// <param name="minKey">Inclusive lower limit</param>
@@ -1174,7 +1177,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     /// Performs an action for every single item within an inclusive lower limit (<paramref name="minKey"/>) and an upper limit (<paramref name="maxKey"/>). 
     /// The parameter <paramref name="maxKey"/> and <paramref name="minKey"/> can be a reduced version of an item as long as they implement <see cref="IComparable{T}"/>.
     /// The upper limit is inclusive if <paramref name="maxInclusive"/> is true otherwise the upper limit is exclusive.
-    /// Use this over <see cref="GetRange(T, T, bool)"/> in performance critical paths.
+    /// Use this over <see cref="GetRange{TKey}(TKey, TKey, bool)"/> in performance critical paths.
     /// It offers the possibility to cancel the iteration.
     /// </summary>
     /// <param name="actionAndCancelFunction">Function that will be called for every relevant item. It returns true to cancel or false to continue.</param>
@@ -1260,7 +1263,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     /// Gets a range of items limited by an inclusive lower limit (<paramref name="minKey"/>) and an upper limit (<paramref name="maxKey"/>). 
     /// The parameter <paramref name="maxKey"/> and <paramref name="minKey"/> can be a reduced version of an item as long as they implement <see cref="IComparable{T}"/>.
     /// The upper limit is inclusive if <paramref name="maxInclusive"/> is true otherwise the upper limit is exclusive.
-    /// Consider using <see cref="DoForEach(Action{T}, T, T, bool)"/> if performance is critical.
+    /// Consider using <see cref="DoForEach{TKey}(Action{T}, TKey, TKey, bool)"/> if performance is critical.
     /// </summary>
     /// <param name="minKey">Inclusive lower limit</param>
     /// <param name="maxKey">Upper limit</param>
@@ -1325,12 +1328,17 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             throw new InvalidOperationException("Modifications during enumerations are not allowed.");
         }
 
-        _Root = new(Degree, true);
+        _Root = new(_Degree, true);
         Count = 0L;
     }
 
+    public override string ToString()
+    {
+        return $"Count: {Count}";
+    }
+
 #if DEBUG
-    public string PrettyPrint()
+    internal string PrettyPrint()
     {
         System.Text.StringBuilder builder = new();
 
@@ -1342,15 +1350,6 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
 
     internal string PrettyString => PrettyPrint();
 
-    public override string ToString()
-    {
-        return PrettyPrint();
-    }
-#else
-    public override string ToString()
-    {
-        return $"Count: {Count}";
-    }
 #endif
 
 }

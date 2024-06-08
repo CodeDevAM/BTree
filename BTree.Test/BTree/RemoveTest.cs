@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections;
+﻿using System.Collections;
 using System.Linq;
 
 namespace BTree.Test.BTree;
@@ -61,6 +60,8 @@ public class RemoveTest
             bool getResult = tree.Get(item, out Ref<int> existingValue);
 
             Assert.That(getResult, Is.EqualTo(true));
+            
+            Assert.That(existingValue, Is.EqualTo(item));
 
             removeResult = tree.Remove(item, out existingItem);
 
@@ -70,7 +71,7 @@ public class RemoveTest
 
             Assert.That(tree.Count, Is.EqualTo(currentExpectedCount));
 
-            getResult = tree.Get(item, out existingValue);
+            getResult = tree.Get(item, out _);
 
             Assert.That(getResult, Is.EqualTo(false));
         }
@@ -115,7 +116,7 @@ public class RemoveTest
             Assert.That(tree.Count, Is.EqualTo(currentExpectedCount));
             Assert.That(maxItem.Value, Is.EqualTo(currentExpectedCount));
 
-            bool getResult = tree.Get(maxItem, out Ref<int> existingValue);
+            bool getResult = tree.Get(maxItem, out Ref<int> _);
 
             Assert.That(getResult, Is.EqualTo(false));
         }
@@ -161,7 +162,7 @@ public class RemoveTest
             Assert.That(tree.Count, Is.EqualTo(currentExpectedCount));
             Assert.That(minItem.Value, Is.EqualTo(currentMin));
 
-            bool getResult = tree.Get(minItem, out Ref<int> existingValue);
+            bool getResult = tree.Get(minItem, out Ref<int> _);
 
             Assert.That(getResult, Is.EqualTo(false));
 

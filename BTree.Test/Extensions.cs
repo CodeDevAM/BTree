@@ -14,9 +14,8 @@ internal static class Extensions
             while (n > 1)
             {
                 int k = RandomNumberGenerator.Next(n--);
-                T temp = list[n];
-                list[n] = list[k];
-                list[k] = temp;
+                // Swap
+                (list[n], list[k]) = (list[k], list[n]);
             }
         }
     }
