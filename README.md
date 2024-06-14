@@ -2,12 +2,11 @@
 
 BTree is a simple and high performant BTree for C# and .NET.
 
-<div align="center">
-    <img 
-        src="./icon.jpeg" 
-        width="256" 
-        height="256">
-</div>
+
+<img 
+    src="./icon.jpeg" 
+    width="256" 
+    height="256"/>
 
 ## Usage
 Items of type `T` that shall be stored in the `BTree<T>` must implement the interface `IComparable<T>`. In this case the usage is straight forward.

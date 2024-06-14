@@ -649,6 +649,103 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             }
         }
 
+        internal NearestItems GetNearest<TKey>(TKey key) where TKey : IComparable<T>
+        {
+            if (Count <= 0)
+            {
+                return new(false, default, false, default);
+            }
+
+            int index = FindNextGreaterOrEqual(key);
+
+            // check this node first
+            if (index < Count)
+            {
+                T currentItem = Items[index];
+                if (key.CompareTo(currentItem) == 0)
+                {
+                    return new(true, currentItem, false, default);
+                }
+            }
+
+            if (IsLeaf)
+            {
+                if (index < Count)
+                {
+                    T currentItem = Items[index];
+                    if (key.CompareTo(currentItem) < 0)
+                    {
+                        if (index > 0)
+                        {
+                            return new(true, Items[index - 1], true, currentItem);
+                        }
+                        else
+                        {
+                            return new(false, default, true, currentItem);
+                        }
+                    }
+                    else // key > currentItem
+                    {
+                        if (index < Count - 1)
+                        {
+                            return new(true, currentItem, true, Items[index + 1]);
+                        }
+                        else
+                        {
+                            return new(true, currentItem, false, default);
+                        }
+                    }
+                }
+                else
+                {
+                    return new(true, Items[Count - 1], false, default);
+                }
+            }
+            else
+            {
+                Node child = Children[index];
+
+                NearestItems nearestItems = child.GetNearest(key);
+
+                if (nearestItems.HasMinItem && nearestItems.HasMaxItem)
+                {
+                    return nearestItems;
+                }
+                else if (nearestItems.HasMinItem)
+                {
+                    if (key.CompareTo(nearestItems.MinItem) == 0)
+                    {
+                        return nearestItems;
+                    }
+                    else
+                    {
+                        if (index < Count)
+                        {
+                            return new(true, nearestItems.MinItem, true, Items[index]);
+                        }
+                        else
+                        {
+                            return nearestItems;
+                        }
+                    }
+                }
+                else if (nearestItems.HasMaxItem)
+                {
+                    if (index > 0)
+                    {
+                        return new(true, Items[index - 1], true, nearestItems.MaxItem);
+                    }
+                    else
+                    {
+                        return nearestItems;
+                    }
+                }
+
+            }
+
+            return new(false, default, false, default);
+        }
+
         internal void DoForEach<TKey>(Action<T> action, TKey minKey, TKey maxKey, bool maxInclusive) where TKey : IComparable<T>
         {
             int index = FindNextGreaterOrEqual(minKey);
@@ -904,6 +1001,8 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
 #endif
     }
 
+    public record struct NearestItems(bool HasMinItem, T MinItem, bool HasMaxItem, T MaxItem);
+
     /// <summary>
     /// The default Degree is chosen to be a good compromise of performance and memory consumption.
     /// </summary>
@@ -1133,6 +1232,23 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
         return _Root.GetMax(out maxItem);
     }
 
+    /// <summary>
+    /// Gets the next greater item as <see cref="NearestItems.MaxItem"/> and the next lower item as <see cref="NearestItems.MinItem"/> if existant. If the key equals an item only this item is returned an <see cref="NearestItems.MinItem"/>.
+    /// The <paramref name="key"/> can be a reduced version of an item as long as it implements <see cref="IComparable{T}"/>.
+    /// </summary>
+    /// <typeparam name="TKey"></typeparam>
+    /// <param name="key">The <paramref name="key"/> can be a reduced version of an item as long as it implements <see cref="IComparable{T}"/></param>
+    /// <returns></returns>
+    /// <exception cref="ArgumentNullException"></exception>
+    public NearestItems GetNearest<TKey>(TKey key) where TKey : IComparable<T>
+    {
+        if (key is null)
+        {
+            throw new ArgumentNullException(nameof(key));
+        }
+
+        return _Root.GetNearest(key);
+    }
 
     /// <summary>
     /// Performs an action for every single item within an inclusive lower limit (<paramref name="minKey"/>) and an upper limit (<paramref name="maxKey"/>). 

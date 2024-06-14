@@ -87,6 +87,66 @@ public class GetTest
         CollectionAssert.AreEqual(expectedRangeSequence, actualRangeList);
     }
 
+    [TestCaseSource(typeof(GetTest), nameof(TestCases))]
+    public void GetNearest(ushort degree, int count, int minItem, int maxItem)
+    {
+        Ref<int>[] orderedItems = Enumerable.Range(1, count).Select(x => new Ref<int>(x * 10)).ToArray();
+        Ref<int>[] items = orderedItems.ToArray();
+        items.Shuffle();
+        BTree<Ref<int>> tree = new(degree);
+
+        foreach (Ref<int> item in items)
+        {
+            tree.InsertOrUpdate(item);
+        }
+
+        foreach (Ref<int> item in items)
+        {
+            BTree<Ref<int>>.NearestItems nearestItems = tree.GetNearest(item);
+            Assert.That(nearestItems.HasMinItem, Is.EqualTo(true));
+            Assert.That(nearestItems.MinItem, Is.EqualTo(item));
+            Assert.That(nearestItems.HasMaxItem, Is.EqualTo(false));
+        }
+
+        Ref<int>[] keys = Enumerable.Range(0, 10 * (count + 1) + 1).Select(x => new Ref<int>(x)).ToArray();
+        keys.Shuffle();
+
+        foreach (Ref<int> key in keys)
+        {
+            BTree<Ref<int>>.NearestItems nearestItems = tree.GetNearest(key);
+
+            if (key.CompareTo(10) < 0)
+            {
+                Assert.That(nearestItems.HasMinItem, Is.EqualTo(false));
+                Assert.That(nearestItems.HasMaxItem, Is.EqualTo(true));
+                Assert.That(nearestItems.MaxItem, Is.EqualTo(new Ref<int>(10)));
+            }
+            else if (key.CompareTo(count * 10) > 0)
+            {
+                Assert.That(nearestItems.HasMinItem, Is.EqualTo(true));
+                Assert.That(nearestItems.MinItem, Is.EqualTo(new Ref<int>(count * 10)));
+                Assert.That(nearestItems.HasMaxItem, Is.EqualTo(false));
+            }
+            else if (key.Value % 10 == 0)
+            {
+                Assert.That(nearestItems.HasMinItem, Is.EqualTo(true));
+                Assert.That(nearestItems.MinItem, Is.EqualTo(key));
+                Assert.That(nearestItems.HasMaxItem, Is.EqualTo(false));
+            }
+            else
+            {
+                Ref<int> expectedMinItem = (key / 10) * 10;
+                Ref<int> expectedMaxItem = ((key / 10) + 1) * 10;
+
+                Assert.That(nearestItems.HasMinItem, Is.EqualTo(true));
+                Assert.That(nearestItems.MinItem, Is.EqualTo(expectedMinItem));
+                Assert.That(nearestItems.HasMaxItem, Is.EqualTo(true));
+                Assert.That(nearestItems.MaxItem, Is.EqualTo(expectedMaxItem));
+            }
+
+        }
+    }
+
     public static IEnumerable TestCases
     {
         get
