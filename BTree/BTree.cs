@@ -41,15 +41,15 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
         {
             if (leftChild == null)
             {
-                throw new Exception(nameof(leftChild));
+                throw new ArgumentNullException(nameof(leftChild));
             }
             if (rightChild == null)
             {
-                throw new Exception(nameof(leftChild));
+                throw new ArgumentNullException(nameof(leftChild));
             }
             if (leftChild.IsLeaf != rightChild.IsLeaf)
             {
-                throw new Exception("Left child node and right child node must be of the same type.");
+                throw new ArgumentException("Left child node and right child node must be of the same type.");
             }
 
             Count = 1;
@@ -68,21 +68,14 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             {
                 if (IsLeaf)
                 {
-                    for (int i = index; i < Count; i++)
-                    {
-                        Items[i] = Items[i + 1];
-                    }
+                    Array.Copy(Items, index + 1, Items, index, Count - index - 1);
                     Items[Count - 1] = default;
                 }
                 else
                 {
-                    for (int i = index; i < Count - 1; i++)
-                    {
-                        Items[i] = Items[i + 1];
-                        Children[i] = Children[i + 1];
-                    }
-
-                    Children[Count - 1] = Children[Count];
+                    Array.Copy(Items, index + 1, Items, index, Count - index - 1);
+                    Items[Count - 1] = default;
+                    Array.Copy(Children, index + 1, Children, index, Count - index);
                     Children[Count] = default;
                 }
             }
@@ -97,23 +90,21 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             {
                 if (IsLeaf)
                 {
-                    for (int i = Count - 1; i >= index; i--)
+                    if (index < Count)
                     {
-                        Items[i + 1] = Items[i];
+                        Array.Copy(Items, index, Items, index + 1, Count - index);
                     }
-
                     Items[index] = default;
                 }
                 else
                 {
-                    Children[Count + 1] = Children[Count];
-                    for (int i = Count - 1; i >= index; i--)
+                    if (index < Count)
                     {
-                        Items[i + 1] = Items[i];
-                        Children[i + 1] = Children[i];
+                        Array.Copy(Items, index, Items, index + 1, Count - index);
                     }
-
                     Items[index] = default;
+
+                    Array.Copy(Children, index, Children, index + 1, Count - index + 1);
                 }
             }
         }
@@ -166,9 +157,16 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             int index = FindNextGreaterOrEqual(item);
 
             // This item is already exists update it
-            if (index < Count && Items[index].CompareTo(item) == 0)
+            if (index < Count)
             {
-                return new(true, null);
+
+                T currentItem = Items[index];
+                int comparisonResult = item.CompareTo(currentItem);
+
+                if (comparisonResult == 0)
+                {
+                    return new(true, null);
+                }
             }
 
             // This item does not exist yet so insert it
@@ -217,42 +215,22 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             T splittingItem = Items[splittingItemIndex];
             Items[splittingItemIndex] = default;
 
-            int rightNodeIndex = 0;
-
             if (IsLeaf)
             {
-                for (int i = leftNodeCount + 1; i < Count; i++)
-                {
-                    newRightNode.Items[rightNodeIndex] = Items[i];
-                    Items[i] = default;
-
-                    newRightNode.Count++;
-                    rightNodeIndex++;
-                }
+                newRightNode.Count = Count - leftNodeCount - 1;
+                Array.Copy(Items, leftNodeCount + 1, newRightNode.Items, 0, newRightNode.Count);
+                Array.Clear(Items, leftNodeCount + 1, newRightNode.Count);
 
                 Count = leftNodeCount;
             }
             else
             {
-                for (int i = leftNodeCount + 1; i < Count; i++)
-                {
-                    newRightNode.Items[rightNodeIndex] = Items[i];
-                    Items[i] = default;
+                newRightNode.Count = Count - leftNodeCount - 1;
+                Array.Copy(Items, leftNodeCount + 1, newRightNode.Items, 0, newRightNode.Count);
+                Array.Clear(Items, leftNodeCount + 1, newRightNode.Count);
 
-
-                    newRightNode.Children[rightNodeIndex] = Children[i];
-                    Children[i] = null;
-
-                    // There is one more child than items
-                    if (i == Count - 1)
-                    {
-                        newRightNode.Children[rightNodeIndex + 1] = Children[i + 1];
-                        Children[i + 1] = null;
-                    }
-
-                    newRightNode.Count++;
-                    rightNodeIndex++;
-                }
+                Array.Copy(Children, leftNodeCount + 1, newRightNode.Children, 0, newRightNode.Count + 1);
+                Array.Clear(Children, leftNodeCount + 1, newRightNode.Count + 1);
 
                 Count = leftNodeCount;
             }
@@ -474,12 +452,9 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
                 leftChild.Count++;
 
                 // Copy all items of the right child to the left child and clear them in the right child
-                for (int i = 0; i < rightChild.Count; i++)
-                {
-                    leftChild.Items[leftChild.Count] = rightChild.Items[i];
-                    leftChild.Count++;
-                    rightChild.Items[i] = default;
-                }
+                Array.Copy(rightChild.Items, 0, leftChild.Items, leftChild.Count, rightChild.Count);
+                leftChild.Count += rightChild.Count;
+                Array.Clear(rightChild.Items, 0, rightChild.Count);
 
                 rightChild.Count = 0;
 
@@ -497,18 +472,12 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
 
                 Items[index] = rightChild.Items[0];
 
-                for (int i = 0; i < rightChild.Count; i++)
-                {
-                    leftChild.Items[leftChild.Count] = rightChild.Items[i];
-                    rightChild.Items[i] = default;
-                    leftChild.Children[leftChild.Count] = rightChild.Children[i];
-                    rightChild.Children[i] = default;
-
-                    leftChild.Count++;
-                }
-                leftChild.Children[leftChild.Count] = rightChild.Children[rightChild.Count];
-                rightChild.Children[rightChild.Count] = default;
-                rightChild.Count = 0;
+                // Copy all items and children of the right child to the left child and clear them in the right child
+                Array.Copy(rightChild.Items, 0, leftChild.Items, leftChild.Count, rightChild.Count);
+                Array.Copy(rightChild.Children, 0, leftChild.Children, leftChild.Count, rightChild.Count + 1);
+                leftChild.Count += rightChild.Count;
+                Array.Clear(rightChild.Items, 0, rightChild.Count);
+                Array.Clear(rightChild.Children, 0, rightChild.Count + 1);
 
                 Children[index + 1] = Children[index];
                 Children[index] = default;
@@ -517,7 +486,6 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
                 Count--;
             }
         }
-
 
         private void HandlePotentialUnderflow(int index)
         {
@@ -554,31 +522,6 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             {
                 throw new Exception("Unhandled underflow");
             }
-        }
-
-        internal bool Contains<TKey>(TKey key) where TKey : IComparable<T>
-        {
-            int index = FindNextGreaterOrEqual(key);
-
-            // check this node first
-            if (index < Count)
-            {
-                T currentItem = Items[index];
-                if (key.CompareTo(currentItem) == 0)
-                {
-                    return true;
-                }
-            }
-
-            // Handle children afterward
-            if (!IsLeaf)
-            {
-                Node child = Children[index];
-
-                return child.Contains(key);
-            }
-
-            return false;
         }
 
         internal bool Get<TKey>(TKey key, out T item) where TKey : IComparable<T>
@@ -1189,7 +1132,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             throw new ArgumentNullException(nameof(key));
         }
 
-        return _Root.Contains(key);
+        return _Root.Get(key, out _);
     }
 
     /// <summary>

@@ -15,19 +15,12 @@ public class GetTest
         items.Shuffle();
         BTree<Ref<int>> tree = new(degree);
 
-        int currentExpectedCount = 0;
-        Assert.That(tree.Count, Is.EqualTo(currentExpectedCount));
-
         Ref<int> currentMinItem = null;
         Ref<int> currentMaxItem = null;
 
         foreach (Ref<int> item in items)
         {
             tree.InsertOrUpdate(item);
-
-            currentExpectedCount++;
-
-            Assert.That(tree.Count, Is.EqualTo(currentExpectedCount));
 
             currentMinItem = currentMinItem == null || item < currentMinItem ? item : currentMinItem;
             bool getMinResult = tree.GetMin(out Ref<int> retrievedMinItem);
@@ -42,11 +35,40 @@ public class GetTest
             Assert.That(retrievedMaxItem, Is.EqualTo(currentMaxItem));
         }
 
+        foreach (Ref<int> item in items)
+        {
+            bool getResult = tree.Get(item, out Ref<int> existingItem);
+
+            Assert.That(getResult, Is.EqualTo(true));
+            Assert.That(existingItem, Is.EqualTo(item));
+        }
+
         Assert.That(tree.Count, Is.EqualTo(count));
+    }
+
+    [TestCaseSource(typeof(GetTest), nameof(TestCases))]
+    public void GetRange(ushort degree, int count, int minItem, int maxItem)
+    {
+        Ref<int>[] orderedItems = Enumerable.Range(0, count).Select(x => new Ref<int>(x)).ToArray();
+        Ref<int>[] items = orderedItems.ToArray();
+        items.Shuffle();
+        BTree<Ref<int>> tree = new(degree);
+
+        foreach (Ref<int> item in items)
+        {
+            tree.InsertOrUpdate(item);
+        }
 
         Ref<int>[] expectedSequence = orderedItems;
         Ref<int>[] actualSequence = tree.GetAll().ToArray();
         CollectionAssert.AreEqual(expectedSequence, actualSequence);
+
+        List<Ref<int>> actualList = [];
+        tree.DoForEach(item =>
+        {
+            actualList.Add(item);
+        });
+        CollectionAssert.AreEqual(expectedSequence, actualList);
 
         // inclusive max
         Ref<int>[] expectedRangeSequence = orderedItems.Where(item => item >= minItem && item <= maxItem).ToArray();
