@@ -9,17 +9,18 @@ using System.Threading;
 namespace BTree;
 
 [DebuggerDisplay("Count: {Count}")]
-public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : IComparable<T>
+public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) where TKey : IComparable<TKey>
 {
     [DebuggerDisplay("Leaf: {IsLeaf}, Count: {Count}")]
     private class Node
     {
         /// <summary>
-        /// Maximum number of children per node. Maximum number of items per node is <see cref="_Degree"/> - 1. Minimum is <see cref="MinDegree"/>
+        /// Maximum number of children per node. Maximum number of keys per node is <see cref="_Degree"/> - 1. Minimum is <see cref="MinDegree"/>
         /// </summary>
         private ushort _Degree { get; set; }
 
-        internal T[] Items { get; private set; }
+        internal TKey[] Keys { get; private set; }
+        internal TItem[] Items { get; private set; }
         internal Node[] Children { get; private set; }
         internal int Count { get; set; }
         internal bool IsLeaf { get; set; }
@@ -33,11 +34,12 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
         {
             _Degree = degree < MinDegree ? MinDegree : degree;
             IsLeaf = isLeaf;
-            Items = new T[_Degree];
+            Keys = new TKey[_Degree];
+            Items = IsLeaf ? new TItem[_Degree] : null;
             Children = IsLeaf ? null : new Node[_Degree + 1];
         }
 
-        internal Node(ushort degree, Node leftChild, Node rightChild, T splittingItem) : this(degree, false)
+        internal Node(ushort degree, Node leftChild, Node rightChild, TKey splittingKey) : this(degree, false)
         {
             if (leftChild == null)
             {
@@ -54,7 +56,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
 
             Count = 1;
 
-            Items[0] = splittingItem;
+            Keys[0] = splittingKey;
 
             Children[0] = leftChild;
             Children[1] = rightChild;
@@ -68,13 +70,16 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             {
                 if (IsLeaf)
                 {
+                    Array.Copy(Keys, index + 1, Keys, index, Count - index - 1);
+                    Keys[Count - 1] = default;
+
                     Array.Copy(Items, index + 1, Items, index, Count - index - 1);
                     Items[Count - 1] = default;
                 }
                 else
                 {
-                    Array.Copy(Items, index + 1, Items, index, Count - index - 1);
-                    Items[Count - 1] = default;
+                    Array.Copy(Keys, index + 1, Keys, index, Count - index - 1);
+                    Keys[Count - 1] = default;
                     Array.Copy(Children, index + 1, Children, index, Count - index);
                     Children[Count] = default;
                 }
@@ -92,24 +97,26 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
                 {
                     if (index < Count)
                     {
+                        Array.Copy(Keys, index, Keys, index + 1, Count - index);
                         Array.Copy(Items, index, Items, index + 1, Count - index);
                     }
+                    Keys[index] = default;
                     Items[index] = default;
                 }
                 else
                 {
                     if (index < Count)
                     {
-                        Array.Copy(Items, index, Items, index + 1, Count - index);
+                        Array.Copy(Keys, index, Keys, index + 1, Count - index);
                     }
-                    Items[index] = default;
+                    Keys[index] = default;
 
                     Array.Copy(Children, index, Children, index + 1, Count - index + 1);
                 }
             }
         }
 
-        private int FindNextGreaterOrEqual<TKey>(TKey key) where TKey : IComparable<T>
+        private int FindNextGreaterOrEqual(TKey key)
         {
             int left = 0;
             int mid = 0;
@@ -119,8 +126,8 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             while (right >= left)
             {
                 mid = (right + left) / 2;
-                T currentItem = Items[mid];
-                compareResult = key.CompareTo(currentItem);
+                TKey currentKey = Keys[mid];
+                compareResult = key.CompareTo(currentKey);
 
                 if (compareResult < 0)
                 {
@@ -150,40 +157,80 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             }
         }
 
-        internal record struct InsertResult(bool Updated, SplitResult? SplitResult);
-
-        internal InsertResult InsertOrUpdate(T item)
+        protected int BinarySearch(TKey key)
         {
-            int index = FindNextGreaterOrEqual(item);
+            int left = 0;
+            int mid = 0;
+            int right = Count - 1;
+            int compareResult = 0;
 
-            // This item is already exists update it
-            if (index < Count)
+            while (right >= left)
             {
+                mid = (right + left) / 2;
 
-                T currentItem = Items[index];
-                int comparisonResult = item.CompareTo(currentItem);
+                TKey currentKey = Keys[mid];
+                compareResult = key.CompareTo(currentKey);
 
-                if (comparisonResult == 0)
+                if (compareResult < 0)
                 {
-                    Items[index] = item;
+                    right = mid - 1;
 
-                    return new(true, null);
+                }
+                else if (compareResult > 0)
+                {
+                    left = mid + 1;
+                }
+                else
+                {
+                    return mid;
                 }
             }
 
-            // This item does not exist yet so insert it
+            return -1;
+        }
+
+        private (Node Child, int Index) GetChild(TKey key)
+        {
+            int index = FindNextGreaterOrEqual(key);
+
+            TKey currentKey = Keys[index];
+            index = index < Count && key.CompareTo(currentKey) >= 0 ? index + 1 : index;
+            Node child = Children[index];
+            return (child, index);
+        }
+
+        internal record struct InsertResult(bool Updated, SplitResult? SplitResult);
+
+        internal InsertResult InsertOrUpdate(TKey key, TItem item)
+        {
             SplitResult? splitResult = null;
 
             if (IsLeaf)
             {
+                int index = FindNextGreaterOrEqual(key);
+                // This item is already exists update it
+                if (index < Count)
+                {
+                    TKey currentKey = Keys[index];
+                    int comparisonResult = key.CompareTo(currentKey);
+
+                    if (comparisonResult == 0)
+                    {
+                        Keys[index] = key;
+                        Items[index] = item;
+                        return new(true, null);
+                    }
+                }
+
                 MoveRight(index);
+                Keys[index] = key;
                 Items[index] = item;
                 Count++;
             }
             else
             {
-                Node child = Children[index];
-                InsertResult insertResult = child.InsertOrUpdate(item);
+                (Node child, int index) = GetChild(key);
+                InsertResult insertResult = child.InsertOrUpdate(key, item);
 
                 if (insertResult.Updated)
                 {
@@ -193,7 +240,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
                 {
                     SplitResult currentSplitResult = insertResult.SplitResult.Value;
                     MoveRight(index);
-                    Items[index] = currentSplitResult.SplittingItem;
+                    Keys[index] = currentSplitResult.SplittingKey;
                     Children[index + 1] = currentSplitResult.NewRightNode;
                     Count++;
                 }
@@ -207,29 +254,32 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             return new(false, splitResult);
         }
 
-        internal record struct SplitResult(Node NewRightNode, T SplittingItem);
+        internal record struct SplitResult(Node NewRightNode, TKey SplittingKey);
         private SplitResult SplitNode()
         {
             Node newRightNode = new(_Degree, IsLeaf);
 
             int leftNodeCount = (Count - 1) / 2;
-            int splittingItemIndex = leftNodeCount;
-            T splittingItem = Items[splittingItemIndex];
-            Items[splittingItemIndex] = default;
+            int splittingKeyIndex = leftNodeCount;
+            TKey splittingKey = Keys[splittingKeyIndex];
 
             if (IsLeaf)
             {
-                newRightNode.Count = Count - leftNodeCount - 1;
-                Array.Copy(Items, leftNodeCount + 1, newRightNode.Items, 0, newRightNode.Count);
-                Array.Clear(Items, leftNodeCount + 1, newRightNode.Count);
+                newRightNode.Count = Count - leftNodeCount;
+
+                Array.Copy(Keys, leftNodeCount, newRightNode.Keys, 0, newRightNode.Count);
+                Array.Clear(Keys, leftNodeCount, newRightNode.Count);
+
+                Array.Copy(Items, leftNodeCount, newRightNode.Items, 0, newRightNode.Count);
+                Array.Clear(Items, leftNodeCount, newRightNode.Count);
 
                 Count = leftNodeCount;
             }
             else
             {
                 newRightNode.Count = Count - leftNodeCount - 1;
-                Array.Copy(Items, leftNodeCount + 1, newRightNode.Items, 0, newRightNode.Count);
-                Array.Clear(Items, leftNodeCount + 1, newRightNode.Count);
+                Array.Copy(Keys, leftNodeCount + 1, newRightNode.Keys, 0, newRightNode.Count);
+                Array.Clear(Keys, leftNodeCount + 1, newRightNode.Count);
 
                 Array.Copy(Children, leftNodeCount + 1, newRightNode.Children, 0, newRightNode.Count + 1);
                 Array.Clear(Children, leftNodeCount + 1, newRightNode.Count + 1);
@@ -237,56 +287,39 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
                 Count = leftNodeCount;
             }
 
-            SplitResult result = new(newRightNode, splittingItem);
+            SplitResult result = new(newRightNode, splittingKey);
             return result;
         }
 
-        internal bool Remove<TKey>(TKey key, out T item) where TKey : IComparable<T>
+        internal bool Remove(TKey key, out TItem item)
         {
-            int index = FindNextGreaterOrEqual(key);
-
-            // Check this node first
-            if (index < Count)
+            if (IsLeaf)
             {
-                T currentItem = Items[index];
-                int comparisonResult = key.CompareTo(currentItem);
+                int index = FindNextGreaterOrEqual(key);
 
-                if (comparisonResult == 0)
+                if (index < Count)
                 {
-                    item = currentItem;
+                    TKey currentKey = Keys[index];
+                    int comparisonResult = key.CompareTo(currentKey);
 
-                    if (IsLeaf)
+                    if (comparisonResult == 0)
                     {
+                        item = Items[index];
+
                         MoveLeft(index);
                         Count--;
                         return true;
                     }
-                    else
-                    {
-                        Node child = Children[index];
-                        bool removeResult = child.RemoveMax(out T maxItem);
-
-                        if (removeResult == false)
-                        {
-                            throw new Exception("Removing item failed.");
-                        }
-
-                        Items[index] = maxItem;
-
-                        if (child._HasUnderflow)
-                        {
-                            HandlePotentialUnderflow(index);
-                        }
-
-                        return true;
-                    }
+                }
+                else
+                {
+                    item = default;
+                    return false;
                 }
             }
-
-            // Handle children afterward
-            if (!IsLeaf)
+            else
             {
-                Node child = Children[index];
+                (Node child, int index) = GetChild(key);
                 bool removeResult = child.Remove(key, out item);
 
                 if (removeResult && child._HasUnderflow)
@@ -301,26 +334,28 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             return false;
         }
 
-        internal bool RemoveMin(out T minItem)
+        internal bool RemoveMin(out KeyValuePair<TKey, TItem> min)
         {
-            if (Count <= 0)
-            {
-                minItem = default;
-                return false;
-            }
-
             if (IsLeaf)
             {
-                minItem = Items[0];
-                MoveLeft(0);
-                Count--;
-                return true;
+                if (Count <= 0)
+                {
+                    min = default;
+                    return false;
+                }
+                else
+                {
+                    min = new(Keys[0], Items[0]);
+                    MoveLeft(0);
+                    Count--;
+                    return true;
+                }
             }
             else
             {
                 Node child = Children[0];
 
-                bool removeResult = child.RemoveMin(out minItem);
+                bool removeResult = child.RemoveMin(out min);
 
                 if (removeResult && child._HasUnderflow)
                 {
@@ -331,26 +366,29 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             }
         }
 
-        internal bool RemoveMax(out T maxItem)
+        internal bool RemoveMax(out KeyValuePair<TKey, TItem> max)
         {
-            if (Count <= 0)
-            {
-                maxItem = default;
-                return false;
-            }
-
             if (IsLeaf)
             {
-                maxItem = Items[Count - 1];
-                Items[Count - 1] = default;
-                Count--;
-                return true;
+                if (Count <= 0)
+                {
+                    max = default;
+                    return false;
+                }
+                else
+                {
+                    max = new(Keys[Count - 1], Items[Count - 1]);
+                    Keys[Count - 1] = default;
+                    Items[Count - 1] = default;
+                    Count--;
+                    return true;
+                }
             }
             else
             {
                 Node child = Children[Count];
 
-                bool removeResult = child.RemoveMax(out maxItem);
+                bool removeResult = child.RemoveMax(out max);
 
                 if (removeResult && child._HasUnderflow)
                 {
@@ -376,24 +414,26 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             if (child.IsLeaf)
             {
                 child.MoveRight(0);
-                child.Items[0] = Items[index - 1]; // The child takes the splitting item of the parent
+                child.Keys[0] = leftSibling.Keys[leftSibling.Count - 1]; // The child takes the splitting key of the left sibling
+                child.Items[0] = leftSibling.Items[leftSibling.Count - 1]; // and the item
                 child.Count++;
 
-                Items[index - 1] = leftSibling.Items[leftSibling.Count - 1]; // The parent takes the max item of the left sibling
+                Keys[index - 1] = leftSibling.Keys[leftSibling.Count - 1]; // The parent takes the max key of the left sibling
 
+                leftSibling.Keys[leftSibling.Count - 1] = default;
                 leftSibling.Items[leftSibling.Count - 1] = default;
                 leftSibling.Count--;
             }
             else
             {
                 child.MoveRight(0);
-                child.Items[0] = Items[index - 1]; // The child takes the splitting item of the parent
+                child.Keys[0] = Keys[index - 1]; // The child takes the splitting key of the parent
                 child.Children[0] = leftSibling.Children[leftSibling.Count]; // The child takes the last child of the left sibling
                 child.Count++;
 
-                Items[index - 1] = leftSibling.Items[leftSibling.Count - 1]; // The parent takes the max item of the left sibling
+                Keys[index - 1] = leftSibling.Keys[leftSibling.Count - 1]; // The parent takes the max key of the left sibling
 
-                leftSibling.Items[leftSibling.Count - 1] = default;
+                leftSibling.Keys[leftSibling.Count - 1] = default;
                 leftSibling.Children[leftSibling.Count] = default;
                 leftSibling.Count--;
             }
@@ -413,20 +453,21 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
 
             if (child.IsLeaf)
             {
-                child.Items[child.Count] = Items[index]; // The child takes the splitting item of the parent
+                child.Keys[child.Count] = rightSibling.Keys[0]; // The child takes the splitting key of the right sibling
+                child.Items[child.Count] = rightSibling.Items[0]; // and the item
                 child.Count++;
 
-                Items[index] = rightSibling.Items[0]; // The parent takes the min item of the right sibling
                 rightSibling.MoveLeft(0);
+                Keys[index] = rightSibling.Keys[0]; // The parent takes the min key of the right sibling
                 rightSibling.Count--;
             }
             else
             {
-                child.Items[child.Count] = Items[index]; // The child takes the splitting item of the parent
+                child.Keys[child.Count] = Keys[index]; // The child takes the splitting key of the parent
                 child.Children[child.Count + 1] = rightSibling.Children[0]; // The child takes the first child of the right sibling
                 child.Count++;
 
-                Items[index] = rightSibling.Items[0]; // The parent takes the min item of the right sibling
+                Keys[index] = rightSibling.Keys[0]; // The parent takes the min key of the right sibling
                 rightSibling.MoveLeft(0);
                 rightSibling.Count--;
             }
@@ -449,14 +490,12 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
 
             if (leftChild.IsLeaf)
             {
-                leftChild.Items[leftChild.Count] = Items[index]; // The left child takes the splitting item of the parent
-                Items[index] = default;
-                leftChild.Count++;
-
-                // Copy all items of the right child to the left child and clear them in the right child
+                // Copy all keys and items of the right child to the left child and clear them in the right child
+                Array.Copy(rightChild.Keys, 0, leftChild.Keys, leftChild.Count, rightChild.Count);
+                Array.Clear(rightChild.Keys, 0, rightChild.Count);
                 Array.Copy(rightChild.Items, 0, leftChild.Items, leftChild.Count, rightChild.Count);
-                leftChild.Count += rightChild.Count;
                 Array.Clear(rightChild.Items, 0, rightChild.Count);
+                leftChild.Count += rightChild.Count;
 
                 rightChild.Count = 0;
 
@@ -468,17 +507,17 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             }
             else
             {
-                leftChild.Items[leftChild.Count] = Items[index]; // The left child takes the splitting item of the parent
-                Items[index] = default;
+                leftChild.Keys[leftChild.Count] = Keys[index]; // The left child takes the splitting key of the parent
+                Keys[index] = default;
                 leftChild.Count++;
 
-                Items[index] = rightChild.Items[0];
+                Keys[index] = rightChild.Keys[0];
 
-                // Copy all items and children of the right child to the left child and clear them in the right child
-                Array.Copy(rightChild.Items, 0, leftChild.Items, leftChild.Count, rightChild.Count);
+                // Copy all keys and children of the right child to the left child and clear them in the right child
+                Array.Copy(rightChild.Keys, 0, leftChild.Keys, leftChild.Count, rightChild.Count);
                 Array.Copy(rightChild.Children, 0, leftChild.Children, leftChild.Count, rightChild.Count + 1);
                 leftChild.Count += rightChild.Count;
-                Array.Clear(rightChild.Items, 0, rightChild.Count);
+                Array.Clear(rightChild.Keys, 0, rightChild.Count);
                 Array.Clear(rightChild.Children, 0, rightChild.Count + 1);
 
                 Children[index + 1] = Children[index];
@@ -526,183 +565,211 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             }
         }
 
-        internal bool Get<TKey>(TKey key, out T item) where TKey : IComparable<T>
+        internal bool Get(TKey key, out TItem item)
         {
-            item = default;
-
-            int index = FindNextGreaterOrEqual(key);
-
-            // check this node first
-            if (index < Count)
+            if (IsLeaf)
             {
-                T currentItem = Items[index];
-                if (key.CompareTo(currentItem) == 0)
+                int index = FindNextGreaterOrEqual(key);
+                // This item is already exists update it
+                if (index < Count)
                 {
-                    item = currentItem;
-                    return true;
+                    TKey currentKey = Keys[index];
+                    int comparisonResult = key.CompareTo(currentKey);
+
+                    if (comparisonResult == 0)
+                    {
+                        item = Items[index];
+                        return true;
+                    }
                 }
             }
-
-            // Handle children afterward
-            if (!IsLeaf)
+            else
             {
-                Node child = Children[index];
+                (Node child, int index) = GetChild(key);
 
                 return child.Get(key, out item);
             }
 
+            item = default;
             return false;
         }
 
-        internal bool GetMin(out T minItem)
+        internal bool GetMin(out KeyValuePair<TKey, TItem> min)
         {
-            if (Count <= 0)
-            {
-                minItem = default;
-                return false;
-            }
-
             if (IsLeaf)
             {
-                minItem = Items[0];
+                if (Count <= 0)
+                {
+                    min = default;
+                    return false;
+                }
+
+                min = new(Keys[0], Items[0]);
                 return true;
             }
             else
             {
                 Node child = Children[0];
-                return child.GetMin(out minItem);
+                return child.GetMin(out min);
             }
         }
 
-        internal bool GetMax(out T maxItem)
+        internal bool GetMax(out KeyValuePair<TKey, TItem> max)
         {
-            if (Count <= 0)
-            {
-                maxItem = default;
-                return false;
-            }
-
             if (IsLeaf)
             {
-                maxItem = Items[Count - 1];
+                if (Count <= 0)
+                {
+                    max = default;
+                    return false;
+                }
+
+                max = new(Keys[Count - 1], Items[Count - 1]);
                 return true;
             }
             else
             {
                 Node child = Children[Count];
-                return child.GetMax(out maxItem);
+                return child.GetMax(out max);
             }
         }
 
-        internal NearestItems GetNearest<TKey>(TKey key) where TKey : IComparable<T>
+        internal NearestItems GetNearest(TKey key)
         {
             if (Count <= 0)
             {
-                return new(false, default, false, default, false, default);
-            }
-
-            int index = FindNextGreaterOrEqual(key);
-
-            // check this node first
-            if (index < Count)
-            {
-                T currentItem = Items[index];
-                if (key.CompareTo(currentItem) == 0)
-                {
-                    return new(true, currentItem, false, default, false, default);
-                }
+                return new(default, default, default);
             }
 
             if (IsLeaf)
             {
+                int index = FindNextGreaterOrEqual(key);
+
                 if (index < Count)
                 {
-                    T currentItem = Items[index];
-                    if (key.CompareTo(currentItem) < 0)
+                    TKey currentKey = Keys[index];
+                    if (key.CompareTo(currentKey) == 0)
+                    {
+                        NearestItems nearestItems = new(new(currentKey, Items[index]), default, default);
+                        return nearestItems;
+                    }
+                    else if (key.CompareTo(currentKey) < 0)
                     {
                         if (index > 0)
                         {
-                            return new(false, default, true, Items[index - 1], true, currentItem);
+                            NearestItems nearestItems = new(default, new(Keys[index - 1], Items[index - 1]), new(currentKey, Items[index]));
+                            return nearestItems;
                         }
                         else
                         {
-                            return new(false, default, false, default, true, currentItem);
+                            NearestItems nearestItems = new(default, default, new(currentKey, Items[index]));
+                            return nearestItems;
                         }
                     }
-                    else // key > currentItem
+                    else // key > currentKey
                     {
                         if (index < Count - 1)
                         {
-                            return new(false, default, true, currentItem, true, Items[index + 1]);
+                            NearestItems nearestItems = new(default, new(currentKey, Items[index]), new(Keys[index + 1], Items[index + 1]));
+                            return nearestItems;
                         }
                         else
                         {
-                            return new(false, default, true, currentItem, false, default);
+                            NearestItems nearestItems = new(default, new(currentKey, Items[index]), default);
+                            return nearestItems;
                         }
                     }
                 }
                 else
                 {
-                    return new(false, default, true, Items[Count - 1], false, default);
+                    NearestItems nearestItems = new(default, new(Keys[Count - 1], Items[Count - 1]), default);
+                    return nearestItems;
                 }
             }
             else
             {
-                Node child = Children[index];
+                (Node child, int index) = GetChild(key);
 
                 NearestItems nearestItems = child.GetNearest(key);
 
-                if (nearestItems.MatchHasValue)
+                if (nearestItems.Match.HasValue)
                 {
                     return nearestItems;
                 }
-                else if (nearestItems.LowerHasValue && nearestItems.UpperHasValue)
+                else if (nearestItems.Lower.HasValue && nearestItems.Upper.HasValue)
                 {
                     return nearestItems;
                 }
-                else if (nearestItems.LowerHasValue)
+                else if (nearestItems.Lower.HasValue)
                 {
-                    if (key.CompareTo(nearestItems.LowerItem) == 0)
+                    if (index < Count)
                     {
-                        return nearestItems;
+                        Node rightSibling = Children[index + 1];
+                        NearestItems rightSiblingNearestItems = rightSibling.GetNearest(key);
+                        NearestItems newNearestItems = new(default, nearestItems.Lower, rightSiblingNearestItems.Upper);
+                        return newNearestItems;
                     }
                     else
                     {
-                        if (index < Count)
-                        {
-                            return new(false, default, true, nearestItems.LowerItem, true, Items[index]);
-                        }
-                        else
-                        {
-                            return nearestItems;
-                        }
+                        return nearestItems;
                     }
                 }
-                else if (nearestItems.UpperHasValue)
+                else if (nearestItems.Upper.HasValue)
                 {
                     if (index > 0)
                     {
-                        return new(false, default, true, Items[index - 1], true, nearestItems.UpperItem);
+                        Node leftSibling = Children[index - 1];
+                        NearestItems leftSiblingNearestItems = leftSibling.GetNearest(key);
+                        NearestItems newNearestItems = new(default, leftSiblingNearestItems.Lower, nearestItems.Upper);
+                        return newNearestItems;
                     }
                     else
                     {
                         return nearestItems;
                     }
                 }
-
             }
 
-            return new(false, default, false, default, false, default);
+            return new(default, default, default);
         }
 
-        internal bool DoForEach<TKey>(Func<T, bool> actionAndCancelFunction, TKey minKey, TKey maxKey, bool maxInclusive) where TKey : IComparable<T>
+        internal bool DoForEach(Func<TKey, TItem, bool> actionAndCancelFunction, TKey minKey, TKey maxKey, bool maxInclusive)
         {
             int index = FindNextGreaterOrEqual(minKey);
 
             for (int i = index; i <= Count; i++)
             {
-                // Handle children first
-                if (!IsLeaf)
+                if (IsLeaf)
+                {
+                    if (i < Count)
+                    {
+                        TKey currentKey = Keys[i];
+                        int comparisonResult = maxKey.CompareTo(currentKey);
+
+                        if (maxInclusive)
+                        {
+                            if (comparisonResult < 0)
+                            {
+                                return true;
+                            }
+                        }
+                        else
+                        {
+                            if (comparisonResult <= 0)
+                            {
+                                return true;
+                            }
+                        }
+
+                        TItem currentItem = Items[i];
+                        bool cancel = actionAndCancelFunction.Invoke(currentKey, currentItem);
+                        if (cancel)
+                        {
+                            return true;
+                        }
+                    }
+                }
+                else
                 {
                     Node child = Children[i];
                     bool cancel = child.DoForEach(actionAndCancelFunction, minKey, maxKey, maxInclusive);
@@ -711,44 +778,29 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
                         return true;
                     }
                 }
-
-                if (i < Count)
-                {
-                    T currentItem = Items[i];
-                    int comparisonResult = maxKey.CompareTo(currentItem);
-
-                    if (maxInclusive)
-                    {
-                        if (comparisonResult < 0)
-                        {
-                            return true;
-                        }
-                    }
-                    else
-                    {
-                        if (comparisonResult <= 0)
-                        {
-                            return true;
-                        }
-                    }
-
-                    bool cancel = actionAndCancelFunction.Invoke(currentItem);
-                    if (cancel)
-                    {
-                        return true;
-                    }
-                }
             }
 
             return false;
         }
 
-        internal bool DoForEach(Func<T, bool> actionAndCancelFunction)
+        internal bool DoForEach(Func<TKey, TItem, bool> actionAndCancelFunction)
         {
             for (int i = 0; i <= Count; i++)
             {
-                // Handle children first
-                if (!IsLeaf)
+                if (IsLeaf)
+                {
+                    if (i < Count)
+                    {
+                        TKey key = Keys[i];
+                        TItem item = Items[i];
+                        bool cancel = actionAndCancelFunction.Invoke(key, item);
+                        if (cancel)
+                        {
+                            return true;
+                        }
+                    }
+                }
+                else
                 {
                     Node child = Children[i];
                     bool cancel = child.DoForEach(actionAndCancelFunction);
@@ -757,80 +809,72 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
                         return true;
                     }
                 }
-
-                if (i < Count)
-                {
-                    T item = Items[i];
-                    bool cancel = actionAndCancelFunction.Invoke(item);
-                    if (cancel)
-                    {
-                        return true;
-                    }
-                }
             }
 
             return false;
         }
 
-        internal IEnumerable<T> GetRange<TKey>(TKey minKey, TKey maxKey, bool maxInclusive) where TKey : IComparable<T>
+        internal IEnumerable<KeyValuePair<TKey, TItem>> GetRange(TKey minKey, TKey maxKey, bool maxInclusive)
         {
             int index = FindNextGreaterOrEqual(minKey);
 
             for (int i = index; i <= Count; i++)
             {
-                // Handle children first
-                if (!IsLeaf)
+                if (IsLeaf)
                 {
-                    Node child = Children[i];
-                    foreach (T item in child.GetRange(minKey, maxKey, maxInclusive))
+                    if (i < Count)
                     {
-                        yield return item;
+                        KeyValuePair<TKey, TItem> keyValuePair = new(Keys[i], Items[i]);
+                        int comparisonResult = maxKey.CompareTo(keyValuePair.Key);
+
+                        if (maxInclusive)
+                        {
+                            if (comparisonResult < 0)
+                            {
+                                yield break;
+                            }
+                        }
+                        else
+                        {
+                            if (comparisonResult <= 0)
+                            {
+                                yield break;
+                            }
+                        }
+
+                        yield return keyValuePair;
                     }
                 }
-
-                if (i < Count)
+                else
                 {
-                    T currentItem = Items[i];
-                    int comparisonResult = maxKey.CompareTo(currentItem);
-
-                    if (maxInclusive)
+                    Node child = Children[i];
+                    foreach (KeyValuePair<TKey, TItem> keyValuePair in child.GetRange(minKey, maxKey, maxInclusive))
                     {
-                        if (comparisonResult < 0)
-                        {
-                            yield break;
-                        }
+                        yield return keyValuePair;
                     }
-                    else
-                    {
-                        if (comparisonResult <= 0)
-                        {
-                            yield break;
-                        }
-                    }
-
-                    yield return currentItem;
                 }
             }
         }
 
-        internal IEnumerable<T> GetAll()
+        internal IEnumerable<KeyValuePair<TKey, TItem>> GetAll()
         {
             for (int i = 0; i <= Count; i++)
             {
-                // Handle children first
-                if (!IsLeaf)
+                if (IsLeaf)
                 {
-                    Node child = Children[i];
-                    foreach (T item in child.GetAll())
+                    if (i < Count)
                     {
-                        yield return item;
+                        KeyValuePair<TKey, TItem> keyValuePair = new(Keys[i], Items[i]);
+                        yield return keyValuePair;
                     }
                 }
-
-                if (i < Count)
+                else
                 {
-                    T item = Items[i];
-                    yield return item;
+                    Node child = Children[i];
+                    foreach (KeyValuePair<TKey, TItem> keyValuePair in child.GetAll())
+                    {
+                        yield return keyValuePair;
+                    }
                 }
             }
         }
@@ -840,40 +884,41 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
         {
             for (int i = Count; i >= 0; i--)
             {
-                if (Count == 0)
+                if (IsLeaf)
                 {
-                    for (int t = 0; t < indentationCount; t++)
-                    {
-                        builder.Append("  ");
-                    }
-                    builder.Append("-\n");
-                }
-                else if (i < Count)
-                {
-                    for (int t = 0; t < indentationCount; t++)
-                    {
-                        builder.Append("  ");
-                    }
-                    T item = Items[i];
-                    builder.Append(item is null ? "-\n" : $"{item}\n");
-                }
-
-                // Handle children first
-                if (!IsLeaf)
-                {
-                    Node child = Children[i];
-                    if (child != null)
-                    {
-                        child.PrettyPrint(builder, indentationCount + 1);
-                    }
-                    else
+                    if (i < Count)
                     {
                         for (int t = 0; t < indentationCount; t++)
                         {
                             builder.Append("  ");
                         }
-                        builder.Append($"/\n");
+                        TKey key = Keys[i];
+                        TItem item = Items[i];
+                        builder.Append($"🍃 [{key}] {item}\n");
                     }
+                    else if (Count == 0)
+                    {
+                        for (int t = 0; t < indentationCount; t++)
+                        {
+                            builder.Append("  ");
+                        }
+                        builder.Append($"🍃 -\n");
+                    }
+                }
+                else
+                {
+                    if (i < Count)
+                    {
+                        for (int t = 0; t < indentationCount; t++)
+                        {
+                            builder.Append("  ");
+                        }
+                        TKey key = Keys[i];
+                        builder.Append($"[{key}]\n");
+                    }
+
+                    Node child = Children[i];
+                    child.PrettyPrint(builder, indentationCount + 1);
                 }
             }
         }
@@ -893,7 +938,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
 #endif
     }
 
-    public record struct NearestItems(bool MatchHasValue, T MatchItem, bool LowerHasValue, T LowerItem, bool UpperHasValue, T UpperItem);
+    public record struct NearestItems(KeyValuePair<TKey, TItem>? Match, KeyValuePair<TKey, TItem>? Lower, KeyValuePair<TKey, TItem>? Upper);
 
     /// <summary>
     /// The default Degree is chosen to be a good compromise of performance and memory consumption.
@@ -943,15 +988,16 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     /// <summary>
     /// Inserts an item or updates it if it already exists.
     /// </summary>
-    /// <param name="item">The item that shall be inserted or updated.</param>
+    /// <param name="key">The key that identifies the item</param>
+    /// <param name="item">The item that shall be inserted or updated</param>
     /// <returns>true if an existing item was updated otherwise false</returns>
     /// <exception cref="ArgumentNullException"></exception>
     /// <exception cref="InvalidOperationException"></exception>
-    public bool InsertOrUpdate(T item)
+    public bool InsertOrUpdate(TKey key, TItem item)
     {
-        if (item is null)
+        if (key is null)
         {
-            throw new ArgumentNullException(nameof(item));
+            throw new ArgumentNullException(nameof(key));
         }
 
         if (_IterationCount > 0L)
@@ -959,14 +1005,14 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             throw new InvalidOperationException("Modifications during enumerations are not allowed.");
         }
 
-        Node.InsertResult insertResult = _Root.InsertOrUpdate(item);
+        Node.InsertResult insertResult = _Root.InsertOrUpdate(key, item);
         if (insertResult.Updated)
         {
             return true;
         }
         else if (insertResult.SplitResult.HasValue)
         {
-            _Root = new(_Degree, _Root, insertResult.SplitResult.Value.NewRightNode, insertResult.SplitResult.Value.SplittingItem);
+            _Root = new(_Degree, _Root, insertResult.SplitResult.Value.NewRightNode, insertResult.SplitResult.Value.SplittingKey);
         }
 
         Count++;
@@ -975,15 +1021,15 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     }
 
     /// <summary>
-    /// Removes the item that is identified by the given key. The <paramref name="key"/> can be a reduced version of an item as long as it implements <see cref="IComparable{T}"/>.
+    /// Removes the <see cref="item"> that is identified by the given <see cref="key"/>.
     /// </summary>
-    /// <param name="key">The <paramref name="key"/> can be a reduced version of an item as long as it implements <see cref="IComparable{T}"/></param>
+    /// <param name="key">The key that identifies the item/></param>
     /// <param name="item">The item that was removed</param>
     /// <returns>true if an item was removed otherwise false</returns>
     /// <exception cref="ArgumentNullException"></exception>
     /// <exception cref="InvalidOperationException"></exception>
     /// <exception cref="Exception"></exception>
-    public bool Remove<TKey>(TKey key, out T item) where TKey : IComparable<T>
+    public bool Remove(TKey key, out TItem item)
     {
         if (key is null)
         {
@@ -1013,18 +1059,18 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     /// <summary>
     /// Removes the minimum item if it exists.
     /// </summary>
-    /// <param name="minItem">The minimum item that was removed</param>
+    /// <param name="min">The key value pair that was removed</param>
     /// <returns>true if an item was removed otherwise false</returns>
     /// <exception cref="InvalidOperationException"></exception>
     /// <exception cref="Exception"></exception>
-    public bool RemoveMin(out T minItem)
+    public bool RemoveMin(out KeyValuePair<TKey, TItem> min)
     {
         if (_IterationCount > 0L)
         {
             throw new InvalidOperationException("Modifications during enumerations are not allowed.");
         }
 
-        bool removeResult = _Root.RemoveMin(out minItem);
+        bool removeResult = _Root.RemoveMin(out min);
 
         if (removeResult)
         {
@@ -1043,17 +1089,17 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     /// <summary>
     /// Removes the maximum item if it exists.
     /// </summary>
-    /// <param name="maxItem">The maximum item that was removed</param>
+    /// <param name="max">The key value pair that was removed</param>
     /// <returns>true if an item was removed otherwise false</returns>
     /// <exception cref="InvalidOperationException"></exception>
     /// <exception cref="Exception"></exception>
-    public bool RemoveMax(out T maxItem)
+    public bool RemoveMax(out KeyValuePair<TKey, TItem> max)
     {
         if (_IterationCount > 0L)
         {
             throw new InvalidOperationException("Modifications during enumerations are not allowed.");
         }
-        bool removeResult = _Root.RemoveMax(out maxItem);
+        bool removeResult = _Root.RemoveMax(out max);
 
         if (removeResult)
         {
@@ -1069,12 +1115,12 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     }
 
     /// <summary>
-    /// Checks if a specific item that is identified by the given key is contained. The <paramref name="key"/> can be a reduced version of an item as long as it implements <see cref="IComparable{T}"/>.
+    /// Checks if a specific item that is identified by the given <paramref name="key"/> is contained.
     /// </summary>
-    /// <param name="key">The <paramref name="key"/> can be a reduced version of an item as long as it implements <see cref="IComparable{T}"/></param>
+    /// <param name="key">The key that identifies the item</param>
     /// <returns>true if the item exists otherwise false</returns>
     /// <exception cref="ArgumentNullException"></exception>
-    public bool Contains<TKey>(TKey key) where TKey : IComparable<T>
+    public bool Contains(TKey key)
     {
         if (key is null)
         {
@@ -1085,14 +1131,13 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     }
 
     /// <summary>
-    /// Gets the item that is identified by the given <paramref name="key"/>. The <paramref name="key"/> can be a reduced version of an item as long as it implements <see cref="IComparable{T}"/>.
+    /// Gets the <see cref="item"/> that is identified by the given <paramref name="key"/>.
     /// </summary>
-    /// <typeparam name="TKey"></typeparam>
-    /// <param name="key">The <paramref name="key"/> can be a reduced version of an item as long as it implements <see cref="IComparable{T}"/></param>
-    /// <param name="item">The item that is associated to the given <paramref name="key"/> if it exists.</param>
+    /// <param name="key">The key that identifies the item</param>
+    /// <param name="item">The item that is identified by the given <paramref name="key"/> if it exists.</param>
     /// <returns>true if the key is exists otherwise false</returns>
     /// <exception cref="ArgumentNullException"></exception>
-    public bool Get<TKey>(TKey key, out T item) where TKey : IComparable<T>
+    public bool Get(TKey key, out TItem item)
     {
         item = default;
 
@@ -1107,32 +1152,30 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     /// <summary>
     /// Gets the minimum item if it exists.
     /// </summary>
-    /// <param name="minItem"></param>
+    /// <param name="min"></param>
     /// <returns>true if a minimum item exists otherwise false</returns>
-    public bool GetMin(out T minItem)
+    public bool GetMin(out KeyValuePair<TKey, TItem> min)
     {
-        return _Root.GetMin(out minItem);
+        return _Root.GetMin(out min);
     }
 
     /// <summary>
     /// Gets the maximum item if it exists.
     /// </summary>
-    /// <param name="maxItem"></param>
+    /// <param name="max"></param>
     /// <returns>true if a maximum item exists otherwise false</returns>
-    public bool GetMax(out T maxItem)
+    public bool GetMax(out KeyValuePair<TKey, TItem> max)
     {
-        return _Root.GetMax(out maxItem);
+        return _Root.GetMax(out max);
     }
 
     /// <summary>
-    /// Gets the next greater item as <see cref="NearestItems.UpperItem"/> and the next lower item as <see cref="NearestItems.LowerItem"/> if existant. If the key equals an item only this item is returned an <see cref="NearestItems.MatchItem"/>.
-    /// The <paramref name="key"/> can be a reduced version of an item as long as it implements <see cref="IComparable{T}"/>.
+    /// Gets the next greater item as <see cref="NearestItems.Upper"/> and the next lower item as <see cref="NearestItems.Lower"/> if existant. If the key equals an existing key only this item is returned an <see cref="NearestItems.Match"/>.
     /// </summary>
-    /// <typeparam name="TKey"></typeparam>
-    /// <param name="key">The <paramref name="key"/> can be a reduced version of an item as long as it implements <see cref="IComparable{T}"/></param>
-    /// <returns></returns>
+    /// <param name="key">The key that identifies the item</param>
+    /// <returns>Gets the next greater item as <see cref="NearestItems.Upper"/> and the next lower item as <see cref="NearestItems.Lower"/> if existant. If the key equals an existing key only this item is returned an <see cref="NearestItems.Match"/>.</returns>
     /// <exception cref="ArgumentNullException"></exception>
-    public NearestItems GetNearest<TKey>(TKey key) where TKey : IComparable<T>
+    public NearestItems GetNearest(TKey key)
     {
         if (key is null)
         {
@@ -1144,16 +1187,15 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
 
     /// <summary>
     /// Performs an action for every single item within an inclusive lower limit (<paramref name="minKey"/>) and an upper limit (<paramref name="maxKey"/>). 
-    /// The parameter <paramref name="maxKey"/> and <paramref name="minKey"/> can be a reduced version of an item as long as they implement <see cref="IComparable{T}"/>.
     /// The upper limit is inclusive if <paramref name="maxInclusive"/> is true otherwise the upper limit is exclusive.
-    /// Use this over <see cref="GetRange{TKey}(TKey, TKey, bool)"/> in performance critical paths.
+    /// Use this over <see cref="GetRange(TKey, TKey, bool)"/> in performance critical paths.
     /// </summary>
     /// <param name="action">Function that will be called for every relevant item.</param>
     /// <param name="minKey">Inclusive lower limit</param>
     /// <param name="maxKey">Upper limit</param>
     /// <param name="maxInclusive">The upper limit is inclusive if true otherwise the upper limit is exclusive</param>
     /// <exception cref="ArgumentNullException"></exception>
-    public void DoForEach<TKey>(Action<T> action, TKey minKey, TKey maxKey, bool maxInclusive) where TKey : IComparable<T>
+    public void DoForEach(Action<TKey, TItem> action, TKey minKey, TKey maxKey, bool maxInclusive)
     {
         if (action == null)
         {
@@ -1170,13 +1212,18 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             throw new ArgumentNullException(nameof(maxKey));
         }
 
+        if (minKey.CompareTo(maxKey) > 0)
+        {
+            return;
+        }
+
         try
         {
             Interlocked.Add(ref _IterationCount, 1);
 
-            bool Action(T item)
+            bool Action(TKey key, TItem item)
             {
-                action.Invoke(item);
+                action.Invoke(key, item);
                 return false;
             }
 
@@ -1190,9 +1237,8 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
 
     /// <summary>
     /// Performs an action for every single item within an inclusive lower limit (<paramref name="minKey"/>) and an upper limit (<paramref name="maxKey"/>). 
-    /// The parameter <paramref name="maxKey"/> and <paramref name="minKey"/> can be a reduced version of an item as long as they implement <see cref="IComparable{T}"/>.
     /// The upper limit is inclusive if <paramref name="maxInclusive"/> is true otherwise the upper limit is exclusive.
-    /// Use this over <see cref="GetRange{TKey}(TKey, TKey, bool)"/> in performance critical paths.
+    /// Use this over <see cref="GetRange(TKey, TKey, bool)"/> in performance critical paths.
     /// It offers the possibility to cancel the iteration.
     /// </summary>
     /// <param name="actionAndCancelFunction">Function that will be called for every relevant item. It returns true to cancel or false to continue.</param>
@@ -1200,7 +1246,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     /// <param name="maxKey">Upper limit</param>
     /// <param name="maxInclusive">The upper limit is inclusive if true otherwise the upper limit is exclusive</param>
     /// <exception cref="ArgumentNullException"></exception>
-    public void DoForEach<TKey>(Func<T, bool> actionAndCancelFunction, TKey minKey, TKey maxKey, bool maxInclusive) where TKey : IComparable<T>
+    public void DoForEach(Func<TKey, TItem, bool> actionAndCancelFunction, TKey minKey, TKey maxKey, bool maxInclusive)
     {
         if (actionAndCancelFunction == null)
         {
@@ -1215,6 +1261,11 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
         if (maxKey is null)
         {
             throw new ArgumentNullException(nameof(maxKey));
+        }
+
+        if (minKey.CompareTo(maxKey) > 0)
+        {
+            return;
         }
 
         try
@@ -1233,7 +1284,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     /// Use this over <see cref="GetAll"/> if performance is critical.
     /// </summary>
     /// <param name="action">Function that will be called for every item.</param>
-    public void DoForEach(Action<T> action)
+    public void DoForEach(Action<TKey, TItem> action)
     {
         if (action == null)
         {
@@ -1244,9 +1295,9 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
         {
             Interlocked.Add(ref _IterationCount, 1);
 
-            bool Action(T item)
+            bool Action(TKey key, TItem item)
             {
-                action.Invoke(item);
+                action.Invoke(key, item);
                 return false;
             }
 
@@ -1263,7 +1314,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     /// Use this over <see cref="GetAll"/> if performance is critical.
     /// </summary>
     /// <param name="actionAndCancelFunction">Function that will be called for every item. It returns true to cancel or false to continue.</param>
-    public void DoForEach(Func<T, bool> actionAndCancelFunction)
+    public void DoForEach(Func<TKey, TItem, bool> actionAndCancelFunction)
     {
         if (actionAndCancelFunction == null)
         {
@@ -1282,17 +1333,16 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     }
 
     /// <summary>
-    /// Gets a range of items limited by an inclusive lower limit (<paramref name="minKey"/>) and an upper limit (<paramref name="maxKey"/>). 
-    /// The parameter <paramref name="maxKey"/> and <paramref name="minKey"/> can be a reduced version of an item as long as they implement <see cref="IComparable{T}"/>.
+    /// Gets a range of items as key value pair limited by an inclusive lower limit (<paramref name="minKey"/>) and an upper limit (<paramref name="maxKey"/>). 
     /// The upper limit is inclusive if <paramref name="maxInclusive"/> is true otherwise the upper limit is exclusive.
-    /// Consider using <see cref="DoForEach{TKey}(Action{T}, TKey, TKey, bool)"/> if performance is critical.
+    /// Consider using <see cref="DoForEach(Action{TKey, TItem}, TKey, TKey, bool)"/> if performance is critical.
     /// </summary>
     /// <param name="minKey">Inclusive lower limit</param>
     /// <param name="maxKey">Upper limit</param>
     /// <param name="maxInclusive">The upper limit is inclusive if true otherwise the upper limit is exclusive</param>
     /// <returns></returns>
     /// <exception cref="ArgumentNullException"></exception>
-    public IEnumerable<T> GetRange<TKey>(TKey minKey, TKey maxKey, bool maxInclusive) where TKey : IComparable<T>
+    public IEnumerable<KeyValuePair<TKey, TItem>> GetRange(TKey minKey, TKey maxKey, bool maxInclusive)
     {
         if (minKey is null)
         {
@@ -1304,12 +1354,17 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             throw new ArgumentNullException(nameof(maxKey));
         }
 
+        if (minKey.CompareTo(maxKey) > 0)
+        {
+            yield break;
+        }
+
         try
         {
             Interlocked.Add(ref _IterationCount, 1);
-            foreach (T item in _Root.GetRange(minKey, maxKey, maxInclusive))
+            foreach (KeyValuePair<TKey, TItem> keyValuePair in _Root.GetRange(minKey, maxKey, maxInclusive))
             {
-                yield return item;
+                yield return keyValuePair;
             }
         }
         finally
@@ -1320,17 +1375,17 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     }
 
     /// <summary>
-    /// Gets all items. Consider using <see cref="DoForEach(Action{T})"/> if performance is critical.
+    /// Gets all items as key value pair. Consider using <see cref="DoForEach(Action{TKey, TItem})"/> if performance is critical.
     /// </summary>
     /// <returns></returns>
-    public IEnumerable<T> GetAll()
+    public IEnumerable<KeyValuePair<TKey, TItem>> GetAll()
     {
         try
         {
             Interlocked.Add(ref _IterationCount, 1);
-            foreach (T item in _Root.GetAll())
+            foreach (KeyValuePair<TKey, TItem> keyValuePair in _Root.GetAll())
             {
-                yield return item;
+                yield return keyValuePair;
             }
         }
         finally

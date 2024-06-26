@@ -1,7 +1,7 @@
 ﻿using System.Collections;
 using System.Linq;
 
-namespace BTree.Test.BTree;
+namespace BTree.Test.BPlusTree;
 
 public class InsertTest
 {
@@ -14,14 +14,14 @@ public class InsertTest
         {
             items.Shuffle();
         }
-        BTree<Ref<int>> tree = new(degree);
+        BPlusTree<Ref<int>, Ref<int>> tree = new(degree);
 
         int currentExpectedCount = 0;
         Assert.That(tree.Count, Is.EqualTo(currentExpectedCount));
 
         foreach (Ref<int> item in items)
         {
-            bool updated = tree.InsertOrUpdate(item);
+            bool updated = tree.InsertOrUpdate(item, item);
 
             Assert.That(updated, Is.EqualTo(false));
 
@@ -47,7 +47,7 @@ public class InsertTest
 
             foreach (Ref<int> item in items)
             {
-                bool updated = tree.InsertOrUpdate(item);
+                bool updated = tree.InsertOrUpdate(item, item);
 
                 Assert.That(updated, Is.EqualTo(true));
 

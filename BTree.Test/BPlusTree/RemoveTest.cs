@@ -1,7 +1,8 @@
 ﻿using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 
-namespace BTree.Test.BTree;
+namespace BTree.Test.BPlusTree;
 
 public class RemoveTest
 {
@@ -17,11 +18,11 @@ public class RemoveTest
         Ref<int>[] removeItems = items.ToArray();
         removeItems.Shuffle();
 
-        BTree<Ref<int>> tree = new(degree);
+        BPlusTree<Ref<int>, Ref<int>> tree = new(degree);
 
         foreach (Ref<int> item in items)
         {
-            tree.InsertOrUpdate(item);
+            tree.InsertOrUpdate(item, item);
         }
 
         Assert.That(tree.Count, Is.EqualTo(count));
@@ -39,7 +40,7 @@ public class RemoveTest
             currentExpectedCount--;
             Assert.That(tree.Count, Is.EqualTo(currentExpectedCount));
 
-            tree.InsertOrUpdate(item);
+            tree.InsertOrUpdate(item, item);
 
             bool getResult = tree.Get(item, out Ref<int> existingValue);
 
@@ -73,14 +74,14 @@ public class RemoveTest
         Ref<int>[] removeItems = items.ToArray();
         removeItems.Shuffle();
 
-        BTree<Ref<int>> tree = new(degree);
+        BPlusTree<Ref<int>, Ref<int>> tree = new(degree);
 
         int currentExpectedCount = 0;
         Assert.That(tree.Count, Is.EqualTo(currentExpectedCount));
 
         foreach (Ref<int> item in items)
         {
-            tree.InsertOrUpdate(item);
+            tree.InsertOrUpdate(item, item);
 
             currentExpectedCount++;
 
@@ -95,12 +96,13 @@ public class RemoveTest
         {
             currentExpectedCount--;
 
-            bool removeResult = tree.RemoveMax(out Ref<int> maxItem);
+            bool removeResult = tree.RemoveMax(out KeyValuePair<Ref<int>, Ref<int>> max);
             Assert.That(removeResult, Is.EqualTo(true));
             Assert.That(tree.Count, Is.EqualTo(currentExpectedCount));
-            Assert.That(maxItem.Value, Is.EqualTo(currentExpectedCount));
+            Assert.That(max.Key, Is.EqualTo(new Ref<int>(currentExpectedCount)));
+            Assert.That(max.Value, Is.EqualTo(new Ref<int>(currentExpectedCount)));
 
-            bool getResult = tree.Get(maxItem, out Ref<int> _);
+            bool getResult = tree.Get(max.Key, out Ref<int> _);
 
             Assert.That(getResult, Is.EqualTo(false));
         }
@@ -118,14 +120,14 @@ public class RemoveTest
         Ref<int>[] removeItems = items.ToArray();
         removeItems.Shuffle();
 
-        BTree<Ref<int>> tree = new(degree);
+        BPlusTree<Ref<int>, Ref<int>> tree = new(degree);
 
         int currentExpectedCount = 0;
         Assert.That(tree.Count, Is.EqualTo(currentExpectedCount));
 
         foreach (Ref<int> item in items)
         {
-            tree.InsertOrUpdate(item);
+            tree.InsertOrUpdate(item, item);
 
             currentExpectedCount++;
 
@@ -141,12 +143,13 @@ public class RemoveTest
         {
             currentExpectedCount--;
 
-            bool removeResult = tree.RemoveMin(out Ref<int> minItem);
+            bool removeResult = tree.RemoveMin(out KeyValuePair<Ref<int>, Ref<int>> min);
             Assert.That(removeResult, Is.EqualTo(true));
             Assert.That(tree.Count, Is.EqualTo(currentExpectedCount));
-            Assert.That(minItem.Value, Is.EqualTo(currentMin));
+            Assert.That(min.Key, Is.EqualTo(new Ref<int>(currentMin)));
+            Assert.That(min.Value, Is.EqualTo(new Ref<int>(currentMin)));
 
-            bool getResult = tree.Get(minItem, out Ref<int> _);
+            bool getResult = tree.Get(min.Key, out Ref<int> _);
 
             Assert.That(getResult, Is.EqualTo(false));
 
