@@ -45,7 +45,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             }
             if (rightChild == null)
             {
-                throw new ArgumentNullException(nameof(leftChild));
+                throw new ArgumentNullException(nameof(rightChild));
             }
             if (leftChild.IsLeaf != rightChild.IsLeaf)
             {

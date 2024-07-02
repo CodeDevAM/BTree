@@ -47,7 +47,7 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
             }
             if (rightChild == null)
             {
-                throw new ArgumentNullException(nameof(leftChild));
+                throw new ArgumentNullException(nameof(rightChild));
             }
             if (leftChild.IsLeaf != rightChild.IsLeaf)
             {
