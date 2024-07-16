@@ -1000,7 +1000,7 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
             throw new ArgumentNullException(nameof(key));
         }
 
-        if (_IterationCount > 0L)
+        if (Interlocked.Read(ref _IterationCount) > 0L)
         {
             throw new InvalidOperationException("Modifications during enumerations are not allowed.");
         }
@@ -1036,7 +1036,7 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
             throw new ArgumentNullException(nameof(key));
         }
 
-        if (_IterationCount > 0L)
+        if (Interlocked.Read(ref _IterationCount) > 0L)
         {
             throw new InvalidOperationException("Modifications during enumerations are not allowed.");
         }
@@ -1065,7 +1065,7 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
     /// <exception cref="Exception"></exception>
     public bool RemoveMin(out KeyValuePair<TKey, TItem> min)
     {
-        if (_IterationCount > 0L)
+        if (Interlocked.Read(ref _IterationCount) > 0L)
         {
             throw new InvalidOperationException("Modifications during enumerations are not allowed.");
         }
@@ -1095,7 +1095,7 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
     /// <exception cref="Exception"></exception>
     public bool RemoveMax(out KeyValuePair<TKey, TItem> max)
     {
-        if (_IterationCount > 0L)
+        if (Interlocked.Read(ref _IterationCount) > 0L)
         {
             throw new InvalidOperationException("Modifications during enumerations are not allowed.");
         }
@@ -1400,7 +1400,7 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
     /// <exception cref="InvalidOperationException"></exception>
     public void Clear()
     {
-        if (_IterationCount > 0L)
+        if (Interlocked.Read(ref _IterationCount) > 0L)
         {
             throw new InvalidOperationException("Modifications during enumerations are not allowed.");
         }

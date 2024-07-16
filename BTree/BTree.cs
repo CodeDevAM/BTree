@@ -954,7 +954,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             throw new ArgumentNullException(nameof(item));
         }
 
-        if (_IterationCount > 0L)
+        if (Interlocked.Read(ref _IterationCount) > 0L)
         {
             throw new InvalidOperationException("Modifications during enumerations are not allowed.");
         }
@@ -990,7 +990,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             throw new ArgumentNullException(nameof(key));
         }
 
-        if (_IterationCount > 0L)
+        if (Interlocked.Read(ref _IterationCount) > 0L)
         {
             throw new InvalidOperationException("Modifications during enumerations are not allowed.");
         }
@@ -1019,7 +1019,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     /// <exception cref="Exception"></exception>
     public bool RemoveMin(out T minItem)
     {
-        if (_IterationCount > 0L)
+        if (Interlocked.Read(ref _IterationCount) > 0L)
         {
             throw new InvalidOperationException("Modifications during enumerations are not allowed.");
         }
@@ -1049,7 +1049,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     /// <exception cref="Exception"></exception>
     public bool RemoveMax(out T maxItem)
     {
-        if (_IterationCount > 0L)
+        if (Interlocked.Read(ref _IterationCount) > 0L)
         {
             throw new InvalidOperationException("Modifications during enumerations are not allowed.");
         }
@@ -1345,7 +1345,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     /// <exception cref="InvalidOperationException"></exception>
     public void Clear()
     {
-        if (_IterationCount > 0L)
+        if (Interlocked.Read(ref _IterationCount) > 0L)
         {
             throw new InvalidOperationException("Modifications during enumerations are not allowed.");
         }
