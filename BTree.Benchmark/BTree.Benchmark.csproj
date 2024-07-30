@@ -10,10 +10,10 @@
     <Authors>DevAM</Authors>
     <Company>DevAM</Company>
     <Product>BTree</Product>
-    <Version>2.0.1</Version>
+    <Version>3.0.0</Version>
     <Copyright>Copyright (c) 2024 DevAM. All Rights Reserved.</Copyright>
-    <AssemblyVersion>2.0.1</AssemblyVersion>
-    <FileVersion>2.0.1</FileVersion>
+    <AssemblyVersion>3.0.0</AssemblyVersion>
+    <FileVersion>3.0.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,6 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\BTree.Test\BTree.Test.csproj" />
     <ProjectReference Include="..\BTree\BTree.csproj" />
   </ItemGroup>
 

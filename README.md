@@ -24,15 +24,27 @@ bool itemAlreadyExisted = tree.InsertOrUpdate(5);
 bool contains = tree.Contains(5);
 
 // Do a range query
-foreach(IntItem item in tree.GetRange(5, 5))
+IntItem lowerLimit = 5;
+IntItem upperLimit = 5;
+foreach(IntItem item in tree.GetRange(lowerLimit, upperLimit, true))
 {
     Console.WriteLine($"Item: {item}");
 }
+
 // or
-tree.DoForEach(item => Console.WriteLine($"Item: {item}"), 5, 5);
+tree.DoForEach(item => 
+{
+    Console.WriteLine($"Item: {item}");
+    return false; // Do not cancel
+}, lowerLimit, upperLimit, true);
+
 // or
 List<IntItem> range = [];
-tree.DoForEach(range.Add, 5, 5);
+tree.DoForEach(item => 
+{
+    range.Add(item);
+    return false; // Do not cancel
+}, lowerLimit, upperLimit, true);
 foreach(IntItem item in range)
 {
     Console.WriteLine($"Item: {item}");

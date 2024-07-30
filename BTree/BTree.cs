@@ -695,9 +695,9 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             return new(false, default, false, default, false, default);
         }
 
-        internal bool DoForEach<TKey>(Func<T, bool> actionAndCancelFunction, TKey minKey, TKey maxKey, bool maxInclusive) where TKey : IComparable<T>
+        internal bool DoForEach<TKey>(Func<T, bool> actionAndCancelFunction, ref Option<TKey> minKey, ref Option<TKey> maxKey, bool maxInclusive) where TKey : IComparable<T>
         {
-            int index = FindNextGreaterOrEqual(minKey);
+            int index = minKey.HasValue ? FindNextGreaterOrEqual(minKey.Value) : 0;
 
             for (int i = index; i <= Count; i++)
             {
@@ -705,7 +705,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
                 if (!IsLeaf)
                 {
                     Node child = Children[i];
-                    bool cancel = child.DoForEach(actionAndCancelFunction, minKey, maxKey, maxInclusive);
+                    bool cancel = child.DoForEach(actionAndCancelFunction, ref minKey, ref maxKey, maxInclusive);
                     if (cancel)
                     {
                         return true;
@@ -715,20 +715,24 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
                 if (i < Count)
                 {
                     T currentItem = Items[i];
-                    int comparisonResult = maxKey.CompareTo(currentItem);
 
-                    if (maxInclusive)
+                    if (maxKey.HasValue)
                     {
-                        if (comparisonResult < 0)
+                        int comparisonResult = maxKey.Value.CompareTo(currentItem);
+
+                        if (maxInclusive)
                         {
-                            return true;
+                            if (comparisonResult < 0)
+                            {
+                                return false;
+                            }
                         }
-                    }
-                    else
-                    {
-                        if (comparisonResult <= 0)
+                        else
                         {
-                            return true;
+                            if (comparisonResult <= 0)
+                            {
+                                return false;
+                            }
                         }
                     }
 
@@ -743,38 +747,9 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             return false;
         }
 
-        internal bool DoForEach(Func<T, bool> actionAndCancelFunction)
+        internal IEnumerable<T> GetRange<TKey>(Option<TKey> minKey, Option<TKey> maxKey, bool maxInclusive) where TKey : IComparable<T>
         {
-            for (int i = 0; i <= Count; i++)
-            {
-                // Handle children first
-                if (!IsLeaf)
-                {
-                    Node child = Children[i];
-                    bool cancel = child.DoForEach(actionAndCancelFunction);
-                    if (cancel)
-                    {
-                        return true;
-                    }
-                }
-
-                if (i < Count)
-                {
-                    T item = Items[i];
-                    bool cancel = actionAndCancelFunction.Invoke(item);
-                    if (cancel)
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-
-        internal IEnumerable<T> GetRange<TKey>(TKey minKey, TKey maxKey, bool maxInclusive) where TKey : IComparable<T>
-        {
-            int index = FindNextGreaterOrEqual(minKey);
+            int index = minKey.HasValue ? FindNextGreaterOrEqual(minKey.Value) : 0;
 
             for (int i = index; i <= Count; i++)
             {
@@ -791,20 +766,34 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
                 if (i < Count)
                 {
                     T currentItem = Items[i];
-                    int comparisonResult = maxKey.CompareTo(currentItem);
 
-                    if (maxInclusive)
+                    if (minKey.HasValue)
                     {
-                        if (comparisonResult < 0)
+                        int comparisonResult = minKey.Value.CompareTo(currentItem);
+
+                        if (comparisonResult > 0)
                         {
-                            yield break;
+                            continue;
                         }
                     }
-                    else
+
+                    if (maxKey.HasValue)
                     {
-                        if (comparisonResult <= 0)
+                        int comparisonResult = maxKey.Value.CompareTo(currentItem);
+
+                        if (maxInclusive)
                         {
-                            yield break;
+                            if (comparisonResult < 0)
+                            {
+                                yield break;
+                            }
+                        }
+                        else
+                        {
+                            if (comparisonResult <= 0)
+                            {
+                                yield break;
+                            }
                         }
                     }
 
@@ -1143,137 +1132,47 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     }
 
     /// <summary>
-    /// Performs an action for every single item within an inclusive lower limit (<paramref name="minKey"/>) and an upper limit (<paramref name="maxKey"/>). 
+    /// Performs an action for every single item within an optional inclusive lower limit (<paramref name="minKey"/>) and an optional upper limit (<paramref name="maxKey"/>). 
     /// The parameter <paramref name="maxKey"/> and <paramref name="minKey"/> can be a reduced version of an item as long as they implement <see cref="IComparable{T}"/>.
     /// The upper limit is inclusive if <paramref name="maxInclusive"/> is true otherwise the upper limit is exclusive.
-    /// Use this over <see cref="GetRange{TKey}(TKey, TKey, bool)"/> in performance critical paths.
-    /// </summary>
-    /// <param name="action">Function that will be called for every relevant item.</param>
-    /// <param name="minKey">Inclusive lower limit</param>
-    /// <param name="maxKey">Upper limit</param>
-    /// <param name="maxInclusive">The upper limit is inclusive if true otherwise the upper limit is exclusive</param>
-    /// <exception cref="ArgumentNullException"></exception>
-    public void DoForEach<TKey>(Action<T> action, TKey minKey, TKey maxKey, bool maxInclusive) where TKey : IComparable<T>
-    {
-        if (action == null)
-        {
-            return;
-        }
-
-        if (minKey is null)
-        {
-            throw new ArgumentNullException(nameof(minKey));
-        }
-
-        if (maxKey is null)
-        {
-            throw new ArgumentNullException(nameof(maxKey));
-        }
-
-        try
-        {
-            Interlocked.Add(ref _IterationCount, 1);
-
-            bool Action(T item)
-            {
-                action.Invoke(item);
-                return false;
-            }
-
-            _Root.DoForEach(Action, minKey, maxKey, maxInclusive);
-        }
-        finally
-        {
-            Interlocked.Add(ref _IterationCount, -1);
-        }
-    }
-
-    /// <summary>
-    /// Performs an action for every single item within an inclusive lower limit (<paramref name="minKey"/>) and an upper limit (<paramref name="maxKey"/>). 
-    /// The parameter <paramref name="maxKey"/> and <paramref name="minKey"/> can be a reduced version of an item as long as they implement <see cref="IComparable{T}"/>.
-    /// The upper limit is inclusive if <paramref name="maxInclusive"/> is true otherwise the upper limit is exclusive.
-    /// Use this over <see cref="GetRange{TKey}(TKey, TKey, bool)"/> in performance critical paths.
+    /// Use this over <see cref="GetRange{TKey}(Option{TKey}, Option{TKey}, bool)"/> in performance critical paths.
     /// It offers the possibility to cancel the iteration.
     /// </summary>
     /// <param name="actionAndCancelFunction">Function that will be called for every relevant item. It returns true to cancel or false to continue.</param>
-    /// <param name="minKey">Inclusive lower limit</param>
-    /// <param name="maxKey">Upper limit</param>
+    /// <param name="minKey">Optional inclusive lower limit</param>
+    /// <param name="maxKey">Optional upper limit</param>
     /// <param name="maxInclusive">The upper limit is inclusive if true otherwise the upper limit is exclusive</param>
+    /// <returns>true if canceled otherwise false</returns>
     /// <exception cref="ArgumentNullException"></exception>
-    public void DoForEach<TKey>(Func<T, bool> actionAndCancelFunction, TKey minKey, TKey maxKey, bool maxInclusive) where TKey : IComparable<T>
+    public bool DoForEach<TKey>(Func<T, bool> actionAndCancelFunction, Option<TKey> minKey = default, Option<TKey> maxKey = default, bool maxInclusive = true) where TKey : IComparable<T>, IComparable<TKey>
     {
         if (actionAndCancelFunction == null)
         {
-            return;
+            return false;
         }
 
-        if (minKey is null)
+        if (minKey.HasValue && minKey.Value is null)
         {
             throw new ArgumentNullException(nameof(minKey));
         }
 
-        if (maxKey is null)
+        if (maxKey.HasValue && maxKey.Value is null)
         {
             throw new ArgumentNullException(nameof(maxKey));
         }
 
-        try
+        if (minKey.HasValue && maxKey.HasValue)
         {
-            Interlocked.Add(ref _IterationCount, 1);
-            _Root.DoForEach(actionAndCancelFunction, minKey, maxKey, maxInclusive);
-        }
-        finally
-        {
-            Interlocked.Add(ref _IterationCount, -1);
-        }
-    }
-
-    /// <summary>
-    /// Performs an action for every single item.
-    /// Use this over <see cref="GetAll"/> if performance is critical.
-    /// </summary>
-    /// <param name="action">Function that will be called for every item.</param>
-    public void DoForEach(Action<T> action)
-    {
-        if (action == null)
-        {
-            return;
-        }
-
-        try
-        {
-            Interlocked.Add(ref _IterationCount, 1);
-
-            bool Action(T item)
+            if (minKey.Value.CompareTo(maxKey.Value) > 0)
             {
-                action.Invoke(item);
                 return false;
             }
-
-            _Root.DoForEach(Action);
-        }
-        finally
-        {
-            Interlocked.Add(ref _IterationCount, -1);
-        }
-    }
-
-    /// <summary>
-    /// Performs an action for every single item. It offers the possibility to cancel the iteration.
-    /// Use this over <see cref="GetAll"/> if performance is critical.
-    /// </summary>
-    /// <param name="actionAndCancelFunction">Function that will be called for every item. It returns true to cancel or false to continue.</param>
-    public void DoForEach(Func<T, bool> actionAndCancelFunction)
-    {
-        if (actionAndCancelFunction == null)
-        {
-            return;
         }
 
         try
         {
             Interlocked.Add(ref _IterationCount, 1);
-            _Root.DoForEach(actionAndCancelFunction);
+            return _Root.DoForEach(actionAndCancelFunction, ref minKey, ref maxKey, maxInclusive);
         }
         finally
         {
@@ -1282,24 +1181,24 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     }
 
     /// <summary>
-    /// Gets a range of items limited by an inclusive lower limit (<paramref name="minKey"/>) and an upper limit (<paramref name="maxKey"/>). 
+    /// Gets a range of items limited by an optional inclusive lower limit (<paramref name="minKey"/>) and an optional upper limit (<paramref name="maxKey"/>). 
     /// The parameter <paramref name="maxKey"/> and <paramref name="minKey"/> can be a reduced version of an item as long as they implement <see cref="IComparable{T}"/>.
     /// The upper limit is inclusive if <paramref name="maxInclusive"/> is true otherwise the upper limit is exclusive.
-    /// Consider using <see cref="DoForEach{TKey}(Action{T}, TKey, TKey, bool)"/> if performance is critical.
+    /// Consider using <see cref="DoForEach{TKey}(Func{T, bool}, Option{TKey}, Option{TKey}, bool)"/> if performance is critical.
     /// </summary>
-    /// <param name="minKey">Inclusive lower limit</param>
-    /// <param name="maxKey">Upper limit</param>
+    /// <param name="minKey">Optional inclusive lower limit</param>
+    /// <param name="maxKey">optional upper limit</param>
     /// <param name="maxInclusive">The upper limit is inclusive if true otherwise the upper limit is exclusive</param>
     /// <returns></returns>
     /// <exception cref="ArgumentNullException"></exception>
-    public IEnumerable<T> GetRange<TKey>(TKey minKey, TKey maxKey, bool maxInclusive) where TKey : IComparable<T>
+    public IEnumerable<T> GetRange<TKey>(Option<TKey> minKey, Option<TKey> maxKey, bool maxInclusive) where TKey : IComparable<T>
     {
-        if (minKey is null)
+        if (minKey.HasValue && minKey.Value is null)
         {
             throw new ArgumentNullException(nameof(minKey));
         }
 
-        if (maxKey is null)
+        if (maxKey.HasValue && maxKey.Value is null)
         {
             throw new ArgumentNullException(nameof(maxKey));
         }
@@ -1320,7 +1219,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     }
 
     /// <summary>
-    /// Gets all items. Consider using <see cref="DoForEach(Action{T})"/> if performance is critical.
+    /// Gets all items. Consider using <see cref="DoForEach{TKey}(Func{T, bool}, Option{TKey}, Option{TKey}, bool)"/> if performance is critical.
     /// </summary>
     /// <returns></returns>
     public IEnumerable<T> GetAll()

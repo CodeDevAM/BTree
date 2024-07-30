@@ -158,18 +158,24 @@ public class RemoveTest
     {
         get
         {
-            ushort[] degrees = [3, 4, 5, 6, 7, 8, 9];
-            int[] counts = [3, 4, 5, 6, 7, 8, 9, 90, 900];
+            ushort[] degrees = [3, 4, 5, 6];
+            int[] counts = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 90, 900];
             bool[] reverseOrders = [false, true];
             bool[] randomOrders = [false, true];
 
             foreach (ushort degree in degrees)
+            {
                 foreach (int count in counts)
+                {
                     foreach (bool reverseOrder in reverseOrders)
+                    {
                         foreach (bool randomOrder in randomOrders)
                         {
                             yield return new TestCaseData(degree, count, reverseOrder, randomOrder);
                         }
+                    }
+                }
+            }
         }
     }
 }

@@ -733,9 +733,9 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
             return new(default, default, default);
         }
 
-        internal bool DoForEach(Func<TKey, TItem, bool> actionAndCancelFunction, TKey minKey, TKey maxKey, bool maxInclusive)
+        internal bool DoForEach(Func<TKey, TItem, bool> actionAndCancelFunction, ref Option<TKey> minKey, ref Option<TKey> maxKey, bool maxInclusive)
         {
-            int index = FindNextGreaterOrEqual(minKey);
+            int index = minKey.HasValue ? FindNextGreaterOrEqual(minKey.Value) : 0;
 
             for (int i = index; i <= Count; i++)
             {
@@ -744,20 +744,24 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
                     if (i < Count)
                     {
                         TKey currentKey = Keys[i];
-                        int comparisonResult = maxKey.CompareTo(currentKey);
 
-                        if (maxInclusive)
+                        if (maxKey.HasValue)
                         {
-                            if (comparisonResult < 0)
+                            int comparisonResult = maxKey.Value.CompareTo(currentKey);
+
+                            if (maxInclusive)
                             {
-                                return true;
+                                if (comparisonResult < 0)
+                                {
+                                    return false;
+                                }
                             }
-                        }
-                        else
-                        {
-                            if (comparisonResult <= 0)
+                            else
                             {
-                                return true;
+                                if (comparisonResult <= 0)
+                                {
+                                    return false;
+                                }
                             }
                         }
 
@@ -772,7 +776,7 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
                 else
                 {
                     Node child = Children[i];
-                    bool cancel = child.DoForEach(actionAndCancelFunction, minKey, maxKey, maxInclusive);
+                    bool cancel = child.DoForEach(actionAndCancelFunction, ref minKey, ref maxKey, maxInclusive);
                     if (cancel)
                     {
                         return true;
@@ -783,40 +787,9 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
             return false;
         }
 
-        internal bool DoForEach(Func<TKey, TItem, bool> actionAndCancelFunction)
+        internal IEnumerable<KeyValuePair<TKey, TItem>> GetRange(Option<TKey> minKey, Option<TKey> maxKey, bool maxInclusive)
         {
-            for (int i = 0; i <= Count; i++)
-            {
-                if (IsLeaf)
-                {
-                    if (i < Count)
-                    {
-                        TKey key = Keys[i];
-                        TItem item = Items[i];
-                        bool cancel = actionAndCancelFunction.Invoke(key, item);
-                        if (cancel)
-                        {
-                            return true;
-                        }
-                    }
-                }
-                else
-                {
-                    Node child = Children[i];
-                    bool cancel = child.DoForEach(actionAndCancelFunction);
-                    if (cancel)
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-
-        internal IEnumerable<KeyValuePair<TKey, TItem>> GetRange(TKey minKey, TKey maxKey, bool maxInclusive)
-        {
-            int index = FindNextGreaterOrEqual(minKey);
+            int index = minKey.HasValue ? FindNextGreaterOrEqual(minKey.Value) : 0;
 
             for (int i = index; i <= Count; i++)
             {
@@ -825,20 +798,34 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
                     if (i < Count)
                     {
                         KeyValuePair<TKey, TItem> keyValuePair = new(Keys[i], Items[i]);
-                        int comparisonResult = maxKey.CompareTo(keyValuePair.Key);
 
-                        if (maxInclusive)
+                        if (minKey.HasValue)
                         {
-                            if (comparisonResult < 0)
+                            int comparisonResult = minKey.Value.CompareTo(keyValuePair.Key);
+
+                            if (comparisonResult > 0)
                             {
-                                yield break;
+                                continue;
                             }
                         }
-                        else
+
+                        if (maxKey.HasValue)
                         {
-                            if (comparisonResult <= 0)
+                            int comparisonResult = maxKey.Value.CompareTo(keyValuePair.Key);
+
+                            if (maxInclusive)
                             {
-                                yield break;
+                                if (comparisonResult < 0)
+                                {
+                                    yield break;
+                                }
+                            }
+                            else
+                            {
+                                if (comparisonResult <= 0)
+                                {
+                                    yield break;
+                                }
                             }
                         }
 
@@ -1186,145 +1173,46 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
     }
 
     /// <summary>
-    /// Performs an action for every single item within an inclusive lower limit (<paramref name="minKey"/>) and an upper limit (<paramref name="maxKey"/>). 
+    /// Performs an action for every single item within an optional inclusive lower limit (<paramref name="minKey"/>) and an optional upper limit (<paramref name="maxKey"/>). 
     /// The upper limit is inclusive if <paramref name="maxInclusive"/> is true otherwise the upper limit is exclusive.
-    /// Use this over <see cref="GetRange(TKey, TKey, bool)"/> in performance critical paths.
-    /// </summary>
-    /// <param name="action">Function that will be called for every relevant item.</param>
-    /// <param name="minKey">Inclusive lower limit</param>
-    /// <param name="maxKey">Upper limit</param>
-    /// <param name="maxInclusive">The upper limit is inclusive if true otherwise the upper limit is exclusive</param>
-    /// <exception cref="ArgumentNullException"></exception>
-    public void DoForEach(Action<TKey, TItem> action, TKey minKey, TKey maxKey, bool maxInclusive)
-    {
-        if (action == null)
-        {
-            return;
-        }
-
-        if (minKey is null)
-        {
-            throw new ArgumentNullException(nameof(minKey));
-        }
-
-        if (maxKey is null)
-        {
-            throw new ArgumentNullException(nameof(maxKey));
-        }
-
-        if (minKey.CompareTo(maxKey) > 0)
-        {
-            return;
-        }
-
-        try
-        {
-            Interlocked.Add(ref _IterationCount, 1);
-
-            bool Action(TKey key, TItem item)
-            {
-                action.Invoke(key, item);
-                return false;
-            }
-
-            _Root.DoForEach(Action, minKey, maxKey, maxInclusive);
-        }
-        finally
-        {
-            Interlocked.Add(ref _IterationCount, -1);
-        }
-    }
-
-    /// <summary>
-    /// Performs an action for every single item within an inclusive lower limit (<paramref name="minKey"/>) and an upper limit (<paramref name="maxKey"/>). 
-    /// The upper limit is inclusive if <paramref name="maxInclusive"/> is true otherwise the upper limit is exclusive.
-    /// Use this over <see cref="GetRange(TKey, TKey, bool)"/> in performance critical paths.
+    /// Use this over <see cref="GetRange(Option{TKey}, Option{TKey}, bool)"/> in performance critical paths.
     /// It offers the possibility to cancel the iteration.
     /// </summary>
     /// <param name="actionAndCancelFunction">Function that will be called for every relevant item. It returns true to cancel or false to continue.</param>
-    /// <param name="minKey">Inclusive lower limit</param>
-    /// <param name="maxKey">Upper limit</param>
+    /// <param name="minKey">Optional inclusive lower limit</param>
+    /// <param name="maxKey">Optional upper limit</param>
     /// <param name="maxInclusive">The upper limit is inclusive if true otherwise the upper limit is exclusive</param>
+    /// <returns>true if canceled otherwise false</returns>
     /// <exception cref="ArgumentNullException"></exception>
-    public void DoForEach(Func<TKey, TItem, bool> actionAndCancelFunction, TKey minKey, TKey maxKey, bool maxInclusive)
+    public bool DoForEach(Func<TKey, TItem, bool> actionAndCancelFunction, Option<TKey> minKey = default, Option<TKey> maxKey = default, bool maxInclusive = true)
     {
         if (actionAndCancelFunction == null)
         {
-            return;
+            return false;
         }
 
-        if (minKey is null)
+        if (minKey.HasValue && minKey.Value is null)
         {
             throw new ArgumentNullException(nameof(minKey));
         }
 
-        if (maxKey is null)
+        if (maxKey.HasValue && maxKey.Value is null)
         {
             throw new ArgumentNullException(nameof(maxKey));
         }
 
-        if (minKey.CompareTo(maxKey) > 0)
+        if (minKey.HasValue && maxKey.HasValue)
         {
-            return;
-        }
-
-        try
-        {
-            Interlocked.Add(ref _IterationCount, 1);
-            _Root.DoForEach(actionAndCancelFunction, minKey, maxKey, maxInclusive);
-        }
-        finally
-        {
-            Interlocked.Add(ref _IterationCount, -1);
-        }
-    }
-
-    /// <summary>
-    /// Performs an action for every single item.
-    /// Use this over <see cref="GetAll"/> if performance is critical.
-    /// </summary>
-    /// <param name="action">Function that will be called for every item.</param>
-    public void DoForEach(Action<TKey, TItem> action)
-    {
-        if (action == null)
-        {
-            return;
-        }
-
-        try
-        {
-            Interlocked.Add(ref _IterationCount, 1);
-
-            bool Action(TKey key, TItem item)
+            if (minKey.Value.CompareTo(maxKey.Value) > 0)
             {
-                action.Invoke(key, item);
                 return false;
             }
-
-            _Root.DoForEach(Action);
-        }
-        finally
-        {
-            Interlocked.Add(ref _IterationCount, -1);
-        }
-    }
-
-    /// <summary>
-    /// Performs an action for every single item. It offers the possibility to cancel the iteration.
-    /// Use this over <see cref="GetAll"/> if performance is critical.
-    /// </summary>
-    /// <param name="actionAndCancelFunction">Function that will be called for every item. It returns true to cancel or false to continue.</param>
-    public void DoForEach(Func<TKey, TItem, bool> actionAndCancelFunction)
-    {
-        if (actionAndCancelFunction == null)
-        {
-            return;
         }
 
         try
         {
             Interlocked.Add(ref _IterationCount, 1);
-            _Root.DoForEach(actionAndCancelFunction);
+            return _Root.DoForEach(actionAndCancelFunction, ref minKey, ref maxKey, maxInclusive);
         }
         finally
         {
@@ -1333,30 +1221,33 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
     }
 
     /// <summary>
-    /// Gets a range of items as key value pair limited by an inclusive lower limit (<paramref name="minKey"/>) and an upper limit (<paramref name="maxKey"/>). 
+    /// Gets a range of items as key value pair limited by an optional inclusive lower limit (<paramref name="minKey"/>) and an optional upper limit (<paramref name="maxKey"/>). 
     /// The upper limit is inclusive if <paramref name="maxInclusive"/> is true otherwise the upper limit is exclusive.
-    /// Consider using <see cref="DoForEach(Action{TKey, TItem}, TKey, TKey, bool)"/> if performance is critical.
+    /// Consider using <see cref="DoForEach(Func{TKey, TItem, bool}, Option{TKey}, Option{TKey}, bool)"/> if performance is critical.
     /// </summary>
-    /// <param name="minKey">Inclusive lower limit</param>
-    /// <param name="maxKey">Upper limit</param>
+    /// <param name="minKey">Optional inclusive lower limit</param>
+    /// <param name="maxKey">Optional upper limit</param>
     /// <param name="maxInclusive">The upper limit is inclusive if true otherwise the upper limit is exclusive</param>
     /// <returns></returns>
     /// <exception cref="ArgumentNullException"></exception>
-    public IEnumerable<KeyValuePair<TKey, TItem>> GetRange(TKey minKey, TKey maxKey, bool maxInclusive)
+    public IEnumerable<KeyValuePair<TKey, TItem>> GetRange(Option<TKey> minKey, Option<TKey> maxKey, bool maxInclusive)
     {
-        if (minKey is null)
+        if (minKey.HasValue && minKey.Value is null)
         {
             throw new ArgumentNullException(nameof(minKey));
         }
 
-        if (maxKey is null)
+        if (maxKey.HasValue && maxKey.Value is null)
         {
             throw new ArgumentNullException(nameof(maxKey));
         }
 
-        if (minKey.CompareTo(maxKey) > 0)
+        if (minKey.HasValue && maxKey.HasValue)
         {
-            yield break;
+            if (minKey.Value.CompareTo(maxKey.Value) > 0)
+            {
+                yield break;
+            }
         }
 
         try
@@ -1375,7 +1266,7 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
     }
 
     /// <summary>
-    /// Gets all items as key value pair. Consider using <see cref="DoForEach(Action{TKey, TItem})"/> if performance is critical.
+    /// Gets all items as key value pair. Consider using <see cref="DoForEach(Func{TKey, TItem, bool}, Option{TKey}, Option{TKey}, bool)"/> if performance is critical.
     /// </summary>
     /// <returns></returns>
     public IEnumerable<KeyValuePair<TKey, TItem>> GetAll()

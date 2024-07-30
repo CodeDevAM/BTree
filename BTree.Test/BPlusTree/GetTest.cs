@@ -8,7 +8,7 @@ namespace BTree.Test.BPlusTree;
 public class GetTest
 {
     [TestCaseSource(typeof(GetTest), nameof(TestCases))]
-    public void Get(ushort degree, int count, int minItem, int maxItem)
+    public void Get(ushort degree, int count, int? minItem, int? maxItem)
     {
         Ref<int>[] orderedItems = Enumerable.Range(0, count).Select(x => new Ref<int>(x)).ToArray();
         Ref<int>[] items = orderedItems.ToArray();
@@ -49,7 +49,7 @@ public class GetTest
     }
 
     [TestCaseSource(typeof(GetTest), nameof(TestCases))]
-    public void GetRange(ushort degree, int count, int minItem, int maxItem)
+    public void GetRange(ushort degree, int count, int? minItem, int? maxItem)
     {
         Ref<int>[] orderedItems = Enumerable.Range(0, count).Select(x => new Ref<int>(x)).ToArray();
         Ref<int>[] items = orderedItems.ToArray();
@@ -61,58 +61,81 @@ public class GetTest
             tree.InsertOrUpdate(item, item);
         }
 
+        Option<Ref<int>> lowerLimit = minItem.HasValue ? new(true, new Ref<int>(minItem.Value)) : default;
+        Option<Ref<int>> upperLimit = maxItem.HasValue ? new(true, new Ref<int>(maxItem.Value)) : default;
+
         KeyValuePair<Ref<int>, Ref<int>>[] expectedSequence = orderedItems.Select(x => new KeyValuePair<Ref<int>, Ref<int>>(x, x)).ToArray();
         KeyValuePair<Ref<int>, Ref<int>>[] actualSequence = tree.GetAll().ToArray();
         CollectionAssert.AreEqual(expectedSequence, actualSequence);
 
         List<KeyValuePair<Ref<int>, Ref<int>>> actualList = [];
-        tree.DoForEach((key, item) =>
+        bool canceled = tree.DoForEach((key, item) =>
         {
             actualList.Add(new KeyValuePair<Ref<int>, Ref<int>>(key, item));
+            return false;
         });
         CollectionAssert.AreEqual(expectedSequence, actualList);
+        Assert.That(canceled, Is.EqualTo(false));
 
         // inclusive max
-        KeyValuePair<Ref<int>, Ref<int>>[] expectedRangeSequence = orderedItems.Where(item => item >= minItem && item <= maxItem).Select(x => new KeyValuePair<Ref<int>, Ref<int>>(x, x)).ToArray();
-        KeyValuePair<Ref<int>, Ref<int>>[] actualRangeSequence = tree.GetRange(minItem, maxItem, true).ToArray();
+        KeyValuePair<Ref<int>, Ref<int>>[] expectedRangeSequence = orderedItems
+            .Where(item => (!minItem.HasValue || item >= minItem.Value) && (!maxItem.HasValue || item <= maxItem.Value))
+            .Select(x => new KeyValuePair<Ref<int>, Ref<int>>(x, x))
+            .ToArray();
+        KeyValuePair<Ref<int>, Ref<int>>[] actualRangeSequence = tree.GetRange(lowerLimit, upperLimit, true).ToArray();
         CollectionAssert.AreEqual(expectedRangeSequence, actualRangeSequence);
 
         List<KeyValuePair<Ref<int>, Ref<int>>> actualRangeList = [];
-        tree.DoForEach((key, item) => actualRangeList.Add(new(key, item)), minItem, maxItem, true);
+        canceled = tree.DoForEach((key, item) =>
+        {
+            actualRangeList.Add(new(key, item));
+            return false;
+        }, lowerLimit, upperLimit, true);
         CollectionAssert.AreEqual(expectedRangeSequence, actualRangeList);
+        Assert.That(canceled, Is.EqualTo(false));
 
+        expectedRangeSequence = expectedRangeSequence.Take(1).ToArray();
         actualRangeList = [];
-        tree.DoForEach((key, item) =>
+        canceled = tree.DoForEach((key, item) =>
         {
             actualRangeList.Add(new KeyValuePair<Ref<int>, Ref<int>>(key, item));
             return true;
-        }, minItem, maxItem, true);
+        }, lowerLimit, upperLimit, true);
 
-        expectedRangeSequence = expectedRangeSequence.Take(1).ToArray();
         CollectionAssert.AreEqual(expectedRangeSequence, actualRangeList);
+        Assert.That(canceled, Is.EqualTo(expectedRangeSequence.Length > 0 ? true : false));
 
         // exclusive max
-        expectedRangeSequence = orderedItems.Where(item => item >= minItem && item < maxItem).Select(x => new KeyValuePair<Ref<int>, Ref<int>>(x, x)).ToArray();
-        actualRangeSequence = tree.GetRange(minItem, maxItem, false).ToArray();
+        expectedRangeSequence = orderedItems
+            .Where(item => (!minItem.HasValue || item >= minItem.Value) && (!maxItem.HasValue || item < maxItem.Value))
+            .Select(x => new KeyValuePair<Ref<int>, Ref<int>>(x, x))
+            .ToArray();
+        actualRangeSequence = tree.GetRange(lowerLimit, upperLimit, false).ToArray();
         CollectionAssert.AreEqual(expectedRangeSequence, actualRangeSequence);
 
         actualRangeList = [];
-        tree.DoForEach((key, item) => actualRangeList.Add(new(key, item)), minItem, maxItem, false);
+        canceled = tree.DoForEach((key, item) =>
+        {
+            actualRangeList.Add(new(key, item));
+            return false;
+        }, lowerLimit, upperLimit, false);
         CollectionAssert.AreEqual(expectedRangeSequence, actualRangeList);
+        Assert.That(canceled, Is.EqualTo(false));
 
+        expectedRangeSequence = expectedRangeSequence.Take(1).ToArray();
         actualRangeList = [];
-        tree.DoForEach((key, item) =>
+        canceled = tree.DoForEach((key, item) =>
         {
             actualRangeList.Add(new(key, item));
             return true;
-        }, minItem, maxItem, false);
+        }, lowerLimit, upperLimit, false);
 
-        expectedRangeSequence = expectedRangeSequence.Take(1).ToArray();
         CollectionAssert.AreEqual(expectedRangeSequence, actualRangeList);
+        Assert.That(canceled, Is.EqualTo(expectedRangeSequence.Length > 0 ? true : false));
     }
 
     [TestCaseSource(typeof(GetTest), nameof(TestCases))]
-    public void GetNearest(ushort degree, int count, int minItem, int maxItem)
+    public void GetNearest(ushort degree, int count, int? minItem, int? maxItem)
     {
         Ref<int>[] orderedItems = Enumerable.Range(1, count).Select(x => new Ref<int>(x * 10)).ToArray();
         Ref<int>[] items = orderedItems.ToArray();
@@ -186,22 +209,25 @@ public class GetTest
     {
         get
         {
-            ushort[] degrees = [3, 4, 5, 6, 7, 8, 9];
-            int[] counts = [3, 4, 5, 6, 7, 8, 9, 90, 900];
+            ushort[] degrees = [3, 4, 5, 6];
+            int[] counts = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 90, 900];
 
             foreach (ushort degree in degrees)
+            {
                 foreach (int count in counts)
                 {
-                    int[] minKeys = [int.MinValue, int.MaxValue, 0, count, count / 2, count / 4];
-                    int[] maxKeys = [int.MinValue, int.MaxValue, 0, count, count / 2, count / 4];
+                    int?[] minKeys = [null, 0, count, count / 2, count / 4];
+                    int?[] maxKeys = [null, 0, count, count / 2, count / 4];
 
-                    foreach (int minKey in minKeys)
-                        foreach (int maxKey in maxKeys)
+                    foreach (int? minKey in minKeys)
+                    {
+                        foreach (int? maxKey in maxKeys)
                         {
                             yield return new TestCaseData(degree, count, minKey, maxKey);
                         }
+                    }
                 }
-
+            }
         }
     }
 }

@@ -10,15 +10,15 @@
 	<Authors>DevAM</Authors>
 	<Company>DevAM</Company>
 	<Product>BTree</Product>
-	<Version>2.0.1</Version>
+	<Version>3.0.0</Version>
 	<Description>BTree offers a simple and high performant implementation of a BTree and a B+Tree (BPlusTree) for C# and .NET.</Description>
 	<Copyright>Copyright (c) 2024 DevAM. All Rights Reserved.</Copyright>
 	<PackageIcon>icon.jpeg</PackageIcon>
 	<PackageReadmeFile>README.md</PackageReadmeFile>
 	<RepositoryType>git</RepositoryType>
 	<PackageTags>BTree</PackageTags>
-	<AssemblyVersion>2.0.1</AssemblyVersion>
-	<FileVersion>2.0.1</FileVersion>
+	<AssemblyVersion>3.0.0</AssemblyVersion>
+	<FileVersion>3.0.0</FileVersion>
 	<PackageLicenseExpression>MIT</PackageLicenseExpression>
 	<PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
 	<AssemblyName>BTree</AssemblyName>
