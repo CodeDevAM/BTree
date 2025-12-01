@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 #pragma warning disable IDE1006
@@ -9,7 +10,7 @@ using System.Threading;
 namespace BTree;
 
 [DebuggerDisplay("Count: {Count}")]
-public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) where TKey : IComparable<TKey>
+public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) where TKey : notnull, IComparable<TKey>
 {
     [DebuggerDisplay("Leaf: {IsLeaf}, Count: {Count}")]
     private class Node
@@ -25,14 +26,23 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
         internal int Count { get; set; }
         internal bool IsLeaf { get; set; }
 
+        // Leaf node linking for efficient range queries
+        internal Node NextLeaf { get; set; }
+        internal Node PrevLeaf { get; set; }
+
         private bool _IsFull => Count >= _Degree;
-        private int _MinCount => (_Degree - 1) / 2;
+        
+        /// <summary>
+        /// Cached minimum count to avoid repeated calculation.
+        /// </summary>
+        private readonly int _MinCount;
         private bool _HasUnderflow => Count < _MinCount;
         private bool _CanBorrow => Count > _MinCount;
 
         internal Node(ushort degree, bool isLeaf)
         {
             _Degree = degree < MinDegree ? MinDegree : degree;
+            _MinCount = (_Degree - 1) / 2;
             IsLeaf = isLeaf;
             Keys = new TKey[_Degree];
             Items = IsLeaf ? new TItem[_Degree] : null;
@@ -116,6 +126,7 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int FindNextGreaterOrEqual(TKey key)
         {
             int left = 0;
@@ -189,6 +200,7 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
             return -1;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private (Node Child, int Index) GetChild(TKey key)
         {
             int index = FindNextGreaterOrEqual(key);
@@ -274,6 +286,15 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
                 Array.Clear(Items, leftNodeCount, newRightNode.Count);
 
                 Count = leftNodeCount;
+
+                // Maintain leaf chain: insert newRightNode after this node
+                newRightNode.NextLeaf = NextLeaf;
+                newRightNode.PrevLeaf = this;
+                if (NextLeaf != null)
+                {
+                    NextLeaf.PrevLeaf = newRightNode;
+                }
+                NextLeaf = newRightNode;
             }
             else
             {
@@ -496,6 +517,15 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
                 Array.Copy(rightChild.Items, 0, leftChild.Items, leftChild.Count, rightChild.Count);
                 Array.Clear(rightChild.Items, 0, rightChild.Count);
                 leftChild.Count += rightChild.Count;
+
+                // Maintain leaf chain: remove rightChild from the chain
+                leftChild.NextLeaf = rightChild.NextLeaf;
+                if (rightChild.NextLeaf != null)
+                {
+                    rightChild.NextLeaf.PrevLeaf = leftChild;
+                }
+                rightChild.NextLeaf = null;
+                rightChild.PrevLeaf = null;
 
                 rightChild.Count = 0;
 
@@ -731,6 +761,53 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
             }
 
             return new(default, default, default);
+        }
+
+        /// <summary>
+        /// Finds the leaf node that contains or would contain the given key.
+        /// </summary>
+        internal (Node Leaf, int Index) FindLeaf(TKey key)
+        {
+            if (IsLeaf)
+            {
+                int index = FindNextGreaterOrEqual(key);
+                return (this, index);
+            }
+            else
+            {
+                (Node child, int _) = GetChild(key);
+                return child.FindLeaf(key);
+            }
+        }
+
+        /// <summary>
+        /// Gets the first (leftmost) leaf node in this subtree.
+        /// </summary>
+        internal Node GetFirstLeaf()
+        {
+            if (IsLeaf)
+            {
+                return this;
+            }
+            else
+            {
+                return Children[0].GetFirstLeaf();
+            }
+        }
+
+        /// <summary>
+        /// Gets the last (rightmost) leaf node in this subtree.
+        /// </summary>
+        internal Node GetLastLeaf()
+        {
+            if (IsLeaf)
+            {
+                return this;
+            }
+            else
+            {
+                return Children[Count].GetLastLeaf();
+            }
         }
 
         internal bool DoForEach(Func<TKey, TItem, bool> actionAndCancelFunction, ref Option<TKey> minKey, ref Option<TKey> maxKey, bool maxInclusive)
@@ -1143,7 +1220,15 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
     /// <returns>true if a minimum item exists otherwise false</returns>
     public bool GetMin(out KeyValuePair<TKey, TItem> min)
     {
-        return _Root.GetMin(out min);
+        Node firstLeaf = _Root.GetFirstLeaf();
+        if (firstLeaf.Count <= 0)
+        {
+            min = default;
+            return false;
+        }
+
+        min = new(firstLeaf.Keys[0], firstLeaf.Items[0]);
+        return true;
     }
 
     /// <summary>
@@ -1153,7 +1238,15 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
     /// <returns>true if a maximum item exists otherwise false</returns>
     public bool GetMax(out KeyValuePair<TKey, TItem> max)
     {
-        return _Root.GetMax(out max);
+        Node lastLeaf = _Root.GetLastLeaf();
+        if (lastLeaf.Count <= 0)
+        {
+            max = default;
+            return false;
+        }
+
+        max = new(lastLeaf.Keys[lastLeaf.Count - 1], lastLeaf.Items[lastLeaf.Count - 1]);
+        return true;
     }
 
     /// <summary>
@@ -1211,13 +1304,203 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
 
         try
         {
-            Interlocked.Add(ref _IterationCount, 1);
-            return _Root.DoForEach(actionAndCancelFunction, ref minKey, ref maxKey, maxInclusive);
+            Interlocked.Increment(ref _IterationCount);
+
+            // Find the starting leaf node
+            Node currentLeaf;
+            int startIndex;
+
+            if (minKey.HasValue)
+            {
+                (currentLeaf, startIndex) = _Root.FindLeaf(minKey.Value);
+            }
+            else
+            {
+                currentLeaf = _Root.GetFirstLeaf();
+                startIndex = 0;
+            }
+
+            // Traverse through linked leaves
+            while (currentLeaf != null)
+            {
+                for (int i = startIndex; i < currentLeaf.Count; i++)
+                {
+                    TKey currentKey = currentLeaf.Keys[i];
+
+                    // Check max boundary
+                    if (maxKey.HasValue)
+                    {
+                        int comparisonResult = maxKey.Value.CompareTo(currentKey);
+
+                        if (maxInclusive)
+                        {
+                            if (comparisonResult < 0)
+                            {
+                                return false;
+                            }
+                        }
+                        else
+                        {
+                            if (comparisonResult <= 0)
+                            {
+                                return false;
+                            }
+                        }
+                    }
+
+                    TItem currentItem = currentLeaf.Items[i];
+                    bool cancel = actionAndCancelFunction.Invoke(currentKey, currentItem);
+                    if (cancel)
+                    {
+                        return true;
+                    }
+                }
+
+                // Move to next leaf
+                currentLeaf = currentLeaf.NextLeaf;
+                startIndex = 0;
+            }
+
+            return false;
         }
         finally
         {
-            Interlocked.Add(ref _IterationCount, -1);
+            Interlocked.Decrement(ref _IterationCount);
         }
+    }
+
+    /// <summary>
+    /// High-performance, allocation-free iteration over items using a struct callback.
+    /// Use this overload in extremely performance-critical paths to avoid delegate overhead.
+    /// </summary>
+    /// <typeparam name="TCallback">A struct implementing <see cref="ICallback{TKey, TItem}"/></typeparam>
+    /// <param name="callback">The callback struct instance. Will be invoked for each item.</param>
+    /// <param name="minKey">Optional inclusive lower limit</param>
+    /// <param name="maxKey">Optional upper limit</param>
+    /// <param name="maxInclusive">The upper limit is inclusive if true otherwise the upper limit is exclusive</param>
+    /// <returns>true if canceled otherwise false</returns>
+    /// <exception cref="ArgumentNullException"></exception>
+    public bool DoForEach<TCallback>(ref TCallback callback, Option<TKey> minKey = default, Option<TKey> maxKey = default, bool maxInclusive = true)
+        where TCallback : struct, ICallback<TKey, TItem>
+    {
+        if (minKey.HasValue && minKey.Value is null)
+        {
+            throw new ArgumentNullException(nameof(minKey));
+        }
+
+        if (maxKey.HasValue && maxKey.Value is null)
+        {
+            throw new ArgumentNullException(nameof(maxKey));
+        }
+
+        if (minKey.HasValue && maxKey.HasValue)
+        {
+            if (minKey.Value.CompareTo(maxKey.Value) > 0)
+            {
+                return false;
+            }
+        }
+
+        try
+        {
+            Interlocked.Increment(ref _IterationCount);
+
+            // Find the starting leaf node
+            Node currentLeaf;
+            int startIndex;
+
+            if (minKey.HasValue)
+            {
+                (currentLeaf, startIndex) = _Root.FindLeaf(minKey.Value);
+            }
+            else
+            {
+                currentLeaf = _Root.GetFirstLeaf();
+                startIndex = 0;
+            }
+
+            // Fast path: no upper bound - avoid repeated HasValue checks in hot loop
+            if (!maxKey.HasValue)
+            {
+                return DoForEachNoUpperBound(ref callback, currentLeaf, startIndex);
+            }
+
+            // Slow path: with upper bound checking
+            TKey maxKeyValue = maxKey.Value;
+            return DoForEachWithUpperBound(ref callback, currentLeaf, startIndex, maxKeyValue, maxInclusive);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _IterationCount);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool DoForEachNoUpperBound<TCallback>(ref TCallback callback, Node currentLeaf, int startIndex)
+        where TCallback : struct, ICallback<TKey, TItem>
+    {
+        while (currentLeaf != null)
+        {
+            TKey[] keys = currentLeaf.Keys;
+            TItem[] items = currentLeaf.Items;
+            int count = currentLeaf.Count;
+
+            for (int i = startIndex; i < count; i++)
+            {
+                if (callback.Invoke(keys[i], items[i]))
+                {
+                    return true;
+                }
+            }
+
+            currentLeaf = currentLeaf.NextLeaf;
+            startIndex = 0;
+        }
+
+        return false;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool DoForEachWithUpperBound<TCallback>(ref TCallback callback, Node currentLeaf, int startIndex, TKey maxKeyValue, bool maxInclusive)
+        where TCallback : struct, ICallback<TKey, TItem>
+    {
+        while (currentLeaf != null)
+        {
+            TKey[] keys = currentLeaf.Keys;
+            TItem[] items = currentLeaf.Items;
+            int count = currentLeaf.Count;
+
+            for (int i = startIndex; i < count; i++)
+            {
+                TKey currentKey = keys[i];
+                int comparisonResult = maxKeyValue.CompareTo(currentKey);
+
+                if (maxInclusive)
+                {
+                    if (comparisonResult < 0)
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    if (comparisonResult <= 0)
+                    {
+                        return false;
+                    }
+                }
+
+                if (callback.Invoke(currentKey, items[i]))
+                {
+                    return true;
+                }
+            }
+
+            currentLeaf = currentLeaf.NextLeaf;
+            startIndex = 0;
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -1253,16 +1536,61 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
         try
         {
             Interlocked.Add(ref _IterationCount, 1);
-            foreach (KeyValuePair<TKey, TItem> keyValuePair in _Root.GetRange(minKey, maxKey, maxInclusive))
+
+            // Find the starting leaf node
+            Node currentLeaf;
+            int startIndex;
+
+            if (minKey.HasValue)
             {
-                yield return keyValuePair;
+                (currentLeaf, startIndex) = _Root.FindLeaf(minKey.Value);
+            }
+            else
+            {
+                currentLeaf = _Root.GetFirstLeaf();
+                startIndex = 0;
+            }
+
+            // Traverse through linked leaves
+            while (currentLeaf != null)
+            {
+                for (int i = startIndex; i < currentLeaf.Count; i++)
+                {
+                    TKey currentKey = currentLeaf.Keys[i];
+
+                    // Check max boundary
+                    if (maxKey.HasValue)
+                    {
+                        int comparisonResult = maxKey.Value.CompareTo(currentKey);
+
+                        if (maxInclusive)
+                        {
+                            if (comparisonResult < 0)
+                            {
+                                yield break;
+                            }
+                        }
+                        else
+                        {
+                            if (comparisonResult <= 0)
+                            {
+                                yield break;
+                            }
+                        }
+                    }
+
+                    yield return new KeyValuePair<TKey, TItem>(currentKey, currentLeaf.Items[i]);
+                }
+
+                // Move to next leaf
+                currentLeaf = currentLeaf.NextLeaf;
+                startIndex = 0;
             }
         }
         finally
         {
-            Interlocked.Add(ref _IterationCount, -1);
+            Interlocked.Decrement(ref _IterationCount);
         }
-
     }
 
     /// <summary>
@@ -1273,15 +1601,24 @@ public class BPlusTree<TKey, TItem>(ushort degree = BTree<TKey>.DefaultDegree) w
     {
         try
         {
-            Interlocked.Add(ref _IterationCount, 1);
-            foreach (KeyValuePair<TKey, TItem> keyValuePair in _Root.GetAll())
+            Interlocked.Increment(ref _IterationCount);
+
+            // Start from the first leaf and traverse through all linked leaves
+            Node currentLeaf = _Root.GetFirstLeaf();
+
+            while (currentLeaf != null)
             {
-                yield return keyValuePair;
+                for (int i = 0; i < currentLeaf.Count; i++)
+                {
+                    yield return new KeyValuePair<TKey, TItem>(currentLeaf.Keys[i], currentLeaf.Items[i]);
+                }
+
+                currentLeaf = currentLeaf.NextLeaf;
             }
         }
         finally
         {
-            Interlocked.Add(ref _IterationCount, -1);
+            Interlocked.Decrement(ref _IterationCount);
         }
     }
 

@@ -2,7 +2,7 @@
 
 BTree offers a simple and high performant implementation of a BTree and a B+Tree (BPlusTree) for C# and .NET.
 
-![icon](https://raw.githubusercontent.com/DevAM-Tools/BTree/main/icon.png)
+![icon](https://raw.githubusercontent.com/DevAM-Tools/BTree/main/icon.jpeg)
 
 ## Usage
 Items of type `T` that shall be stored in the `BTree<T>` must implement the interface `IComparable<T>`. In this case the usage is straight forward.
@@ -110,7 +110,7 @@ public void BPlusTree()
     int item = _Items[index];
     _BPlusTree.Get(item, out int _);
     _BPlusTree.Remove(item, out int _);
-    _BPlusTre
+    _BPlusTree.InsertOrUpdate(item);
 }
 ```
 
@@ -142,7 +142,7 @@ Contributions are welcome.
 
 MIT License
 
-Copyright (c) 2024 DevAM
+Copyright (c) 2024-2025 DevAM
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

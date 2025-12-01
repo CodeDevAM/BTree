@@ -1,12 +1,13 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace BTree;
 
 [DebuggerDisplay("Count: {Count}")]
-public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : IComparable<T>
+public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : notnull, IComparable<T>
 {
     [DebuggerDisplay("Leaf: {IsLeaf}, Count: {Count}")]
     private class Node
@@ -22,13 +23,18 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
         internal bool IsLeaf { get; set; }
 
         private bool _IsFull => Count >= _Degree;
-        private int _MinCount => (_Degree - 1) / 2;
+        
+        /// <summary>
+        /// Cached minimum count to avoid repeated calculation.
+        /// </summary>
+        private readonly int _MinCount;
         private bool _HasUnderflow => Count < _MinCount;
         private bool _CanBorrow => Count > _MinCount;
 
         internal Node(ushort degree, bool isLeaf)
         {
             _Degree = degree < MinDegree ? MinDegree : degree;
+            _MinCount = (_Degree - 1) / 2;
             IsLeaf = isLeaf;
             Items = new T[_Degree];
             Children = IsLeaf ? null : new Node[_Degree + 1];
@@ -106,6 +112,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int FindNextGreaterOrEqual<TKey>(TKey key) where TKey : IComparable<T>
         {
             int left = 0;
@@ -477,7 +484,6 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
                 leftChild.Count += rightChild.Count;
                 Array.Clear(rightChild.Items, 0, rightChild.Count);
                 Array.Clear(rightChild.Children, 0, rightChild.Count + 1);
-
                 Children[index + 1] = Children[index];
                 Children[index] = default;
 
@@ -734,6 +740,61 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
                     }
 
                     bool cancel = actionAndCancelFunction.Invoke(currentItem);
+                    if (cancel)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal bool DoForEach<TKey, TCallback>(ref TCallback callback, ref Option<TKey> minKey, ref Option<TKey> maxKey, bool maxInclusive) 
+            where TKey : IComparable<T>
+            where TCallback : struct, ICallback<T>
+        {
+            int index = minKey.HasValue ? FindNextGreaterOrEqual(minKey.Value) : 0;
+
+            for (int i = index; i <= Count; i++)
+            {
+                // Handle children first
+                if (!IsLeaf)
+                {
+                    Node child = Children[i];
+                    bool cancel = child.DoForEach(ref callback, ref minKey, ref maxKey, maxInclusive);
+                    if (cancel)
+                    {
+                        return true;
+                    }
+                }
+
+                if (i < Count)
+                {
+                    T currentItem = Items[i];
+
+                    if (maxKey.HasValue)
+                    {
+                        int comparisonResult = maxKey.Value.CompareTo(currentItem);
+
+                        if (maxInclusive)
+                        {
+                            if (comparisonResult < 0)
+                            {
+                                return false;
+                            }
+                        }
+                        else
+                        {
+                            if (comparisonResult <= 0)
+                            {
+                                return false;
+                            }
+                        }
+                    }
+
+                    bool cancel = callback.Invoke(currentItem);
                     if (cancel)
                     {
                         return true;
@@ -1168,12 +1229,57 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
 
         try
         {
-            Interlocked.Add(ref _IterationCount, 1);
+            Interlocked.Increment(ref _IterationCount);
             return _Root.DoForEach(actionAndCancelFunction, ref minKey, ref maxKey, maxInclusive);
         }
         finally
         {
-            Interlocked.Add(ref _IterationCount, -1);
+            Interlocked.Decrement(ref _IterationCount);
+        }
+    }
+
+    /// <summary>
+    /// High-performance, allocation-free iteration over items using a struct callback.
+    /// Use this overload in extremely performance-critical paths to avoid delegate overhead.
+    /// </summary>
+    /// <typeparam name="TKey">The key type for range bounds</typeparam>
+    /// <typeparam name="TCallback">A struct implementing <see cref="ICallback{T}"/></typeparam>
+    /// <param name="callback">The callback struct instance. Will be invoked for each item.</param>
+    /// <param name="minKey">Optional inclusive lower limit</param>
+    /// <param name="maxKey">Optional upper limit</param>
+    /// <param name="maxInclusive">The upper limit is inclusive if true otherwise the upper limit is exclusive</param>
+    /// <returns>true if canceled otherwise false</returns>
+    /// <exception cref="ArgumentNullException"></exception>
+    public bool DoForEach<TKey, TCallback>(ref TCallback callback, Option<TKey> minKey = default, Option<TKey> maxKey = default, bool maxInclusive = true)
+        where TKey : IComparable<T>, IComparable<TKey>
+        where TCallback : struct, ICallback<T>
+    {
+        if (minKey.HasValue && minKey.Value is null)
+        {
+            throw new ArgumentNullException(nameof(minKey));
+        }
+
+        if (maxKey.HasValue && maxKey.Value is null)
+        {
+            throw new ArgumentNullException(nameof(maxKey));
+        }
+
+        if (minKey.HasValue && maxKey.HasValue)
+        {
+            if (minKey.Value.CompareTo(maxKey.Value) > 0)
+            {
+                return false;
+            }
+        }
+
+        try
+        {
+            Interlocked.Increment(ref _IterationCount);
+            return _Root.DoForEach(ref callback, ref minKey, ref maxKey, maxInclusive);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _IterationCount);
         }
     }
 
@@ -1202,7 +1308,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
 
         try
         {
-            Interlocked.Add(ref _IterationCount, 1);
+            Interlocked.Increment(ref _IterationCount);
             foreach (T item in _Root.GetRange(minKey, maxKey, maxInclusive))
             {
                 yield return item;
@@ -1210,7 +1316,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
         }
         finally
         {
-            Interlocked.Add(ref _IterationCount, -1);
+            Interlocked.Decrement(ref _IterationCount);
         }
 
     }
@@ -1223,7 +1329,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
     {
         try
         {
-            Interlocked.Add(ref _IterationCount, 1);
+            Interlocked.Increment(ref _IterationCount);
             foreach (T item in _Root.GetAll())
             {
                 yield return item;
@@ -1231,7 +1337,7 @@ public class BTree<T>(ushort degree = BTree<T>.DefaultDegree) where T : ICompara
         }
         finally
         {
-            Interlocked.Add(ref _IterationCount, -1);
+            Interlocked.Decrement(ref _IterationCount);
         }
     }
 

@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-	<TargetFramework>netstandard2.0</TargetFramework>
+	<TargetFrameworks>netstandard2.0;net6.0;net8.0;net10.0</TargetFrameworks>
 	<Nullable>disable</Nullable>
 	<LangVersion>latest</LangVersion>
 	<InvariantGlobalization>true</InvariantGlobalization>
@@ -10,15 +10,15 @@
 	<Authors>DevAM</Authors>
 	<Company>DevAM</Company>
 	<Product>BTree</Product>
-	<Version>3.0.1</Version>
+	<Version>4.0.0</Version>
 	<Description>BTree offers a simple and high performant implementation of a BTree and a B+Tree (BPlusTree) for C# and .NET.</Description>
 	<Copyright>Copyright (c) 2024 DevAM. All Rights Reserved.</Copyright>
 	<PackageIcon>icon.jpeg</PackageIcon>
 	<PackageReadmeFile>README.md</PackageReadmeFile>
 	<RepositoryType>git</RepositoryType>
 	<PackageTags>BTree</PackageTags>
-	<AssemblyVersion>3.0.1</AssemblyVersion>
-	<FileVersion>3.0.1</FileVersion>
+	<AssemblyVersion>4.0.0</AssemblyVersion>
+	<FileVersion>4.0.0</FileVersion>
 	<PackageLicenseExpression>MIT</PackageLicenseExpression>
 	<PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
 	<AssemblyName>BTree</AssemblyName>
@@ -26,6 +26,11 @@
 	<PackageId>DevAM.BTree</PackageId>
 	<PackageProjectUrl>https://github.com/DevAM-Tools/BTree</PackageProjectUrl>
 	<RepositoryUrl>https://github.com/DevAM-Tools/BTree</RepositoryUrl>
+	<IncludeSymbols>true</IncludeSymbols>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+	<ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
   <ItemGroup>

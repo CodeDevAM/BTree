@@ -1,0 +1,12 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+  </Configurations>
+  <Folder Name="/Solution Items/">
+    <File Path="README.md" />
+  </Folder>
+
+  <Project Path="BTree/BTree.csproj" />
+  <Project Path="BTree.Test/BTree.Test.csproj" />
+  <Project Path="BTree.Benchmark/BTree.Benchmark.csproj" />
+</Solution>
